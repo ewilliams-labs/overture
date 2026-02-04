@@ -1,0 +1,17 @@
+# Binaries & OS
+bin/
+backend/backend
+.DS_Store
+.env
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Node
+node_modules/
+dist/
+
+# Go
+vendor/
