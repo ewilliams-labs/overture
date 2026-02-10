@@ -6,6 +6,7 @@ import (
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
+	"github.com/google/uuid"
 )
 
 // Orchestrator coordinates spotify and playlist repository operations.
@@ -50,4 +51,26 @@ func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string
 
 	// 5. Return the updated playlist so the UI can update immediately
 	return *pl, nil
+}
+
+// CreatePlaylist initializes a new empty playlist and persists it.
+func (o *Orchestrator) CreatePlaylist(ctx context.Context, name string) (domain.Playlist, error) {
+	if name == "" {
+		return domain.Playlist{}, fmt.Errorf("service: playlist name cannot be empty")
+	}
+
+	// 1. Create the Domain Entity
+	// We generate the ID here so the entity is valid before it ever touches the DB.
+	newPlaylist := domain.Playlist{
+		ID:     uuid.New().String(),
+		Name:   name,
+		Tracks: []domain.Track{}, // Empty slice, not nil, is safer for JSON serialization
+	}
+
+	// 2. Persist to Repository
+	if err := o.repo.Save(ctx, newPlaylist); err != nil {
+		return domain.Playlist{}, fmt.Errorf("service: failed to persist new playlist: %w", err)
+	}
+
+	return newPlaylist, nil
 }

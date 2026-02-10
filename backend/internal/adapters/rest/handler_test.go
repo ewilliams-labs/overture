@@ -124,3 +124,75 @@ func TestHandler_AddTrack(t *testing.T) {
 		})
 	}
 }
+
+func TestHandler_CreatePlaylist(t *testing.T) {
+	tests := []struct {
+		name           string
+		body           map[string]string
+		mockRepoFail   bool
+		expectedStatus int
+		expectedBody   string // substring match
+	}{
+		{
+			name:           "Success: creates playlist",
+			body:           map[string]string{"name": "Chill Vibes"},
+			mockRepoFail:   false,
+			expectedStatus: http.StatusCreated,
+			expectedBody:   `"name":"Chill Vibes"`,
+		},
+		{
+			name:           "Bad Request: empty name",
+			body:           map[string]string{"name": ""},
+			mockRepoFail:   false,
+			expectedStatus: http.StatusBadRequest,                    // Service returns error for empty name
+			expectedBody:   "service: playlist name cannot be empty", // Check error message
+		},
+		{
+			name:           "Bad Request: malformed json",
+			body:           nil, // Will send empty body
+			mockRepoFail:   false,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid request body",
+		},
+		{
+			name:           "Server Error: repo save fails",
+			body:           map[string]string{"name": "Crash DB"},
+			mockRepoFail:   true,
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "service: failed to persist new playlist",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// 1. Setup
+			repo := &mockRepo{shouldFailSave: tc.mockRepoFail}
+			svc := services.NewOrchestrator(&mockSpotify{}, repo)
+			h := NewHandler(svc)
+
+			// 2. Request
+			var bodyBytes []byte
+			if tc.body != nil {
+				bodyBytes, _ = json.Marshal(tc.body)
+			}
+			// Special case for malformed JSON test
+			if tc.name == "Bad Request: malformed json" {
+				bodyBytes = []byte(`{invalid-json`)
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/playlists", bytes.NewBuffer(bodyBytes))
+			rec := httptest.NewRecorder()
+
+			// 3. Execute
+			h.ServeHTTP(rec, req)
+
+			// 4. Verify
+			if rec.Code != tc.expectedStatus {
+				t.Errorf("Status Code: got %d, want %d", rec.Code, tc.expectedStatus)
+			}
+			if !strings.Contains(rec.Body.String(), tc.expectedBody) {
+				t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), tc.expectedBody)
+			}
+		})
+	}
+}

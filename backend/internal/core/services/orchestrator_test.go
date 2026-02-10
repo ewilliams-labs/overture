@@ -157,3 +157,63 @@ func (m *mockRepo) Save(ctx context.Context, p domain.Playlist) error {
 	m.saved = &p
 	return nil
 }
+
+func TestOrchestrator_CreatePlaylist(t *testing.T) {
+	tests := []struct {
+		name      string
+		inputName string
+		mockErr   error
+		wantErr   bool
+	}{
+		{
+			name:      "Success: valid name creates playlist",
+			inputName: "My New Mix",
+			mockErr:   nil,
+			wantErr:   false,
+		},
+		{
+			name:      "Validation Error: empty name",
+			inputName: "",
+			mockErr:   nil,
+			wantErr:   true,
+		},
+		{
+			name:      "Repo Error: save fails",
+			inputName: "Database Failure",
+			mockErr:   errors.New("db error"),
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup Mocks
+			mockRepo := &mockRepo{saveErr: tc.mockErr}
+			mockSpotify := &mockSpotify{}
+
+			o := NewOrchestrator(mockSpotify, mockRepo)
+
+			// Execute
+			pl, err := o.CreatePlaylist(context.Background(), tc.inputName)
+
+			// Verify Error
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("CreatePlaylist() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			// Verify Success State
+			if !tc.wantErr {
+				if pl.ID == "" {
+					t.Error("Expected UUID to be generated, got empty string")
+				}
+				if pl.Name != tc.inputName {
+					t.Errorf("Expected name %q, got %q", tc.inputName, pl.Name)
+				}
+				// Verify it was actually passed to the repo
+				if mockRepo.saved == nil || mockRepo.saved.ID != pl.ID {
+					t.Error("Repository Save() was not called with the correct playlist")
+				}
+			}
+		})
+	}
+}

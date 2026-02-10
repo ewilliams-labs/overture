@@ -36,10 +36,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) routes() {
 	// Health Check
 	h.router.HandleFunc("GET /health", h.HealthCheck)
-
-	// --- ADD THIS LINE ---
-	// "POST /tracks" works in Go 1.22+
+	// Playlist Management
 	h.router.HandleFunc("POST /tracks", h.AddTrack)
+	h.router.HandleFunc("POST /playlists", h.CreatePlaylist)
 }
 
 // HealthCheck is a simple endpoint to verify the API is running.
