@@ -1,3 +1,4 @@
+// Package services provides business logic orchestration for the Overture application.
 package services
 
 import (

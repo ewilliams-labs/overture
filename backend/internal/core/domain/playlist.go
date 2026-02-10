@@ -2,14 +2,18 @@ package domain
 
 import "errors"
 
+// ErrDuplicateISRC is returned when attempting to add a track with a duplicate ISRC to a playlist.
 var ErrDuplicateISRC = errors.New("domain: duplicate ISRC")
 
+// Playlist represents a collection of tracks.
 type Playlist struct {
 	ID     string  `json:"id"`
 	Name   string  `json:"name"`
 	Tracks []Track `json:"tracks"`
 }
 
+// NewPlaylist creates a new Playlist instance with the given ID and name.
+// It returns an error if the ID or name are empty.
 func NewPlaylist(id, name string) (*Playlist, error) {
 	if id == "" || name == "" {
 		return nil, errors.New("domain: invalid argument")

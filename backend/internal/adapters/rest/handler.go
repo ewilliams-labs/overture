@@ -1,3 +1,4 @@
+// Package rest provides HTTP adapters for the Overture application.
 package rest
 
 import (
