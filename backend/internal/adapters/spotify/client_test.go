@@ -234,3 +234,122 @@ func TestAddTrackToPlaylist(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTrack(t *testing.T) {
+	tests := []struct {
+		name           string
+		isrc           string
+		searchStatus   int
+		searchBody     string
+		featuresStatus int
+		featuresBody   string
+		expectErr      bool
+		want           domain.Track
+		wantFeatures   domain.AudioFeatures
+	}{
+		{
+			name:         "not found",
+			isrc:         "BAD",
+			searchStatus: http.StatusOK,
+			searchBody:   `{ "tracks": { "items": [] } }`,
+			expectErr:    true,
+		},
+		{
+			name:         "success with features",
+			isrc:         "US1234567890",
+			searchStatus: http.StatusOK,
+			searchBody: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "track-1",
+							"name": "Test Track",
+							"duration_ms": 210000,
+							"artists": [ { "name": "Test Artist" } ],
+							"album": { "name": "Test Album", "images": [ { "url": "http://img.com/cover.jpg" } ] },
+							"external_ids": { "isrc": "US1234567890" }
+						}
+					]
+				}
+			}`,
+			featuresStatus: http.StatusOK,
+			featuresBody: `{
+				"danceability": 0.5,
+				"energy": 0.7,
+				"valence": 0.3,
+				"tempo": 120,
+				"instrumentalness": 0.2,
+				"acousticness": 0.4
+			}`,
+			expectErr: false,
+			want: domain.Track{
+				ID:         "track-1",
+				Title:      "Test Track",
+				Artist:     "Test Artist",
+				Album:      "Test Album",
+				CoverURL:   "http://img.com/cover.jpg",
+				DurationMs: 210000,
+				ISRC:       "US1234567890",
+			},
+			wantFeatures: domain.AudioFeatures{
+				Danceability:     0.5,
+				Energy:           0.7,
+				Valence:          0.3,
+				Tempo:            120,
+				Instrumentalness: 0.2,
+				Acousticness:     0.4,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			featuresCalled := false
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/search":
+					query := r.URL.Query()
+					if query.Get("q") != "isrc:"+tt.isrc {
+						t.Errorf("q param: got %q, want %q", query.Get("q"), "isrc:"+tt.isrc)
+					}
+					if query.Get("type") != "track" {
+						t.Errorf("type param: got %q, want %q", query.Get("type"), "track")
+					}
+					if query.Get("limit") != "1" {
+						t.Errorf("limit param: got %q, want %q", query.Get("limit"), "1")
+					}
+					w.WriteHeader(tt.searchStatus)
+					w.Write([]byte(tt.searchBody))
+				case r.URL.Path == "/audio-features/track-1":
+					featuresCalled = true
+					w.WriteHeader(tt.featuresStatus)
+					w.Write([]byte(tt.featuresBody))
+				default:
+					t.Fatalf("unexpected path: %s", r.URL.Path)
+				}
+			}))
+			defer ts.Close()
+
+			client := spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
+
+			track, err := client.GetTrack(context.Background(), tt.isrc)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("expected error: %v, got: %v", tt.expectErr, err)
+			}
+
+			if tt.expectErr {
+				if featuresCalled {
+					t.Error("features endpoint should not be called on search miss")
+				}
+				return
+			}
+
+			want := tt.want
+			want.Features = tt.wantFeatures
+			compareTracks(t, track, want)
+			if track.Features != tt.wantFeatures {
+				t.Errorf("Features: got %+v, want %+v", track.Features, tt.wantFeatures)
+			}
+		})
+	}
+}

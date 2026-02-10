@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +17,8 @@ func main() {
 	// It's best practice to crash early if required config is missing.
 	clientID := os.Getenv("SPOTIFY_CLIENT_ID")
 	clientSecret := os.Getenv("SPOTIFY_CLIENT_SECRET")
+	fmt.Printf("DEBUG: Client ID length: %d\n", len(clientID))
+	fmt.Printf("DEBUG: Client Secret length: %d\n", len(clientSecret))
 	if clientID == "" || clientSecret == "" {
 		log.Fatal("FATAL: SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET environment variables are required")
 	}

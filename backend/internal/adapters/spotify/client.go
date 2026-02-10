@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+	"net/url"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 const (
@@ -20,16 +21,20 @@ const (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
-	// In the future, we will add auth tokens here
 }
 
 // NewClient creates a standard Spotify client.
-// This is what you use in main.go.
 func NewClient(clientID, clientSecret string) *Client {
-	// For now, we use a default HTTP client.
-	// Later, we will add an OAuth2 transport here.
+	config := &clientcredentials.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		TokenURL:     "https://accounts.spotify.com/api/token", // Real Spotify Auth URL
+	}
+
+	httpClient := config.Client(context.Background())
+
 	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: httpClient,
 		baseURL:    BaseURL,
 	}
 }
@@ -47,6 +52,7 @@ func NewClientWithBaseURL(httpClient *http.Client, baseURL string) *Client {
 func (c *Client) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track, error) {
 	// 1. Search API (because /tracks/{id} requires a Spotify ID, not ISRC)
 	url := fmt.Sprintf("%s/search?type=track&q=isrc:%s", c.baseURL, isrc)
+	fmt.Printf("DEBUG spotify adapter: search request URL: %s\n", url)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -60,8 +66,11 @@ func (c *Client) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("DEBUG spotify adapter: search response status: %d\n", resp.StatusCode)
 		return domain.Track{}, fmt.Errorf("spotify adapter: status %d", resp.StatusCode)
 	}
+
+	fmt.Printf("DEBUG spotify adapter: search response status: %d\n", resp.StatusCode)
 
 	// 2. Decode Response (Wrapper -> Tracks -> Items)
 	var searchResp struct {
@@ -75,6 +84,7 @@ func (c *Client) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track,
 	}
 
 	if len(searchResp.Tracks.Items) == 0 {
+		fmt.Printf("DEBUG spotify adapter: search returned 0 items for ISRC %s\n", isrc)
 		return domain.Track{}, fmt.Errorf("spotify adapter: no track found for ISRC %s", isrc)
 	}
 
@@ -125,4 +135,71 @@ func (c *Client) AddTrackToPlaylist(ctx context.Context, playlistID, trackID str
 
 	// 5. Map to Domain
 	return mapPlaylistToDomain(spPlaylist), nil
+}
+
+// GetTrack fetches a track by ISRC and enriches it with audio features.
+func (c *Client) GetTrack(ctx context.Context, isrc string) (domain.Track, error) {
+	searchURL, err := url.Parse(fmt.Sprintf("%s/search", c.baseURL))
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: invalid search url: %w", err)
+	}
+
+	query := searchURL.Query()
+	query.Set("q", "isrc:"+isrc)
+	query.Set("type", "track")
+	query.Set("limit", "1")
+	searchURL.RawQuery = query.Encode()
+
+	searchReq, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL.String(), nil)
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: failed to create search request: %w", err)
+	}
+
+	searchResp, err := c.httpClient.Do(searchReq)
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: search request failed: %w", err)
+	}
+	defer searchResp.Body.Close()
+
+	if searchResp.StatusCode != http.StatusOK {
+		return domain.Track{}, fmt.Errorf("spotify adapter: search status %d", searchResp.StatusCode)
+	}
+
+	var searchBody struct {
+		Tracks struct {
+			Items []spotifyTrack `json:"items"`
+		} `json:"tracks"`
+	}
+
+	if err := json.NewDecoder(searchResp.Body).Decode(&searchBody); err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: search decode error: %w", err)
+	}
+
+	if len(searchBody.Tracks.Items) == 0 {
+		return domain.Track{}, fmt.Errorf("no track found")
+	}
+
+	track := searchBody.Tracks.Items[0]
+	featuresURL := fmt.Sprintf("%s/audio-features/%s", c.baseURL, track.ID)
+	featuresReq, err := http.NewRequestWithContext(ctx, http.MethodGet, featuresURL, nil)
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: failed to create features request: %w", err)
+	}
+
+	featuresResp, err := c.httpClient.Do(featuresReq)
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: features request failed: %w", err)
+	}
+	defer featuresResp.Body.Close()
+
+	if featuresResp.StatusCode != http.StatusOK {
+		return domain.Track{}, fmt.Errorf("spotify adapter: features status %d", featuresResp.StatusCode)
+	}
+
+	var features spotifyAudioFeatures
+	if err := json.NewDecoder(featuresResp.Body).Decode(&features); err != nil {
+		return domain.Track{}, fmt.Errorf("spotify adapter: features decode error: %w", err)
+	}
+
+	return mapTrackToDomain(track, &features), nil
 }
