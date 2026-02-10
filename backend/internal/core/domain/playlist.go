@@ -39,3 +39,32 @@ func (p *Playlist) AddTrack(t Track) error {
 	p.Tracks = append(p.Tracks, t)
 	return nil
 }
+
+// Analyze returns the average audio features across all tracks in the playlist.
+// If there are no tracks, it returns zero values.
+func (p Playlist) Analyze() AudioFeatures {
+	if len(p.Tracks) == 0 {
+		return AudioFeatures{}
+	}
+
+	var sum AudioFeatures
+	for _, tr := range p.Tracks {
+		feat := tr.Features
+		sum.Danceability += feat.Danceability
+		sum.Energy += feat.Energy
+		sum.Valence += feat.Valence
+		sum.Tempo += feat.Tempo
+		sum.Instrumentalness += feat.Instrumentalness
+		sum.Acousticness += feat.Acousticness
+	}
+
+	count := float64(len(p.Tracks))
+	return AudioFeatures{
+		Danceability:     sum.Danceability / count,
+		Energy:           sum.Energy / count,
+		Valence:          sum.Valence / count,
+		Tempo:            sum.Tempo / count,
+		Instrumentalness: sum.Instrumentalness / count,
+		Acousticness:     sum.Acousticness / count,
+	}
+}

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
@@ -137,13 +138,22 @@ func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackI
 type mockRepo struct {
 	getErr  error
 	saveErr error
+	playlist domain.Playlist
+
+	called   bool
+	calledID string
 
 	saved *domain.Playlist // captured saved playlist (pointer for test inspection)
 }
 
 func (m *mockRepo) GetByID(ctx context.Context, id string) (domain.Playlist, error) {
+	m.called = true
+	m.calledID = id
 	if m.getErr != nil {
 		return domain.Playlist{}, m.getErr
+	}
+	if m.playlist.ID != "" {
+		return m.playlist, nil
 	}
 	// return a valid empty playlist (struct) with the provided id
 	return domain.Playlist{ID: id, Name: "Test Playlist", Tracks: []domain.Track{}}, nil
@@ -216,4 +226,167 @@ func TestOrchestrator_CreatePlaylist(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOrchestrator_GetPlaylist(t *testing.T) {
+	tests := []struct {
+		name        string
+		playlistID  string
+		mockGetErr  error
+		wantErr     bool
+		wantCalled  bool
+		wantIDMatch bool
+	}{
+		{
+			name:        "Validation Error: empty id",
+			playlistID:  "",
+			mockGetErr:  nil,
+			wantErr:     true,
+			wantCalled:  false,
+			wantIDMatch: false,
+		},
+		{
+			name:        "Repo Error: get fails",
+			playlistID:  "pl-1",
+			mockGetErr:  errors.New("get failed"),
+			wantErr:     true,
+			wantCalled:  true,
+			wantIDMatch: false,
+		},
+		{
+			name:        "Success: returns playlist",
+			playlistID:  "pl-2",
+			mockGetErr:  nil,
+			wantErr:     false,
+			wantCalled:  true,
+			wantIDMatch: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo := &mockRepo{getErr: tc.mockGetErr}
+			mockSpotify := &mockSpotify{}
+
+			o := NewOrchestrator(mockSpotify, mockRepo)
+
+			pl, err := o.GetPlaylist(context.Background(), tc.playlistID)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("GetPlaylist() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			if mockRepo.called != tc.wantCalled {
+				t.Fatalf("GetByID() called = %v, wantCalled %v", mockRepo.called, tc.wantCalled)
+			}
+
+			if tc.wantIDMatch && pl.ID != tc.playlistID {
+				t.Fatalf("expected playlist ID %q, got %q", tc.playlistID, pl.ID)
+			}
+		})
+	}
+}
+
+func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
+	tests := []struct {
+		name        string
+		playlistID  string
+		mockGetErr  error
+		playlist    domain.Playlist
+		wantErr     bool
+		expected    domain.AudioFeatures
+		wantCalled  bool
+		wantIDMatch bool
+	}{
+		{
+			name:       "Repo Error: get fails",
+			playlistID: "pl-1",
+			mockGetErr: errors.New("get failed"),
+			wantErr:    true,
+			wantCalled: true,
+		},
+		{
+			name:       "Success: returns analyzed features",
+			playlistID: "pl-2",
+			playlist: domain.Playlist{
+				ID:   "pl-2",
+				Name: "Test Playlist",
+				Tracks: []domain.Track{
+					{
+						ID: "t1",
+						Features: domain.AudioFeatures{
+							Danceability:    0.2,
+							Energy:          0.4,
+							Valence:         0.6,
+							Tempo:           100,
+							Instrumentalness: 0.1,
+							Acousticness:    0.3,
+						},
+					},
+					{
+						ID: "t2",
+						Features: domain.AudioFeatures{
+							Danceability:    0.6,
+							Energy:          0.8,
+							Valence:         0.2,
+							Tempo:           120,
+							Instrumentalness: 0.3,
+							Acousticness:    0.5,
+						},
+					},
+				},
+			},
+			wantErr:     false,
+			wantCalled:  true,
+			wantIDMatch: true,
+			expected: domain.AudioFeatures{
+				Danceability:    0.4,
+				Energy:          0.6,
+				Valence:         0.4,
+				Tempo:           110,
+				Instrumentalness: 0.2,
+				Acousticness:    0.4,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo := &mockRepo{getErr: tc.mockGetErr, playlist: tc.playlist}
+			mockSpotify := &mockSpotify{}
+
+			o := NewOrchestrator(mockSpotify, mockRepo)
+
+			features, err := o.GetPlaylistAnalysis(context.Background(), tc.playlistID)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("GetPlaylistAnalysis() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			if mockRepo.called != tc.wantCalled {
+				t.Fatalf("GetByID() called = %v, wantCalled %v", mockRepo.called, tc.wantCalled)
+			}
+
+			if tc.wantIDMatch && mockRepo.calledID != tc.playlistID {
+				t.Fatalf("expected called ID %q, got %q", tc.playlistID, mockRepo.calledID)
+			}
+
+			if !tc.wantErr && !featuresEqual(features, tc.expected, 1e-9) {
+				t.Fatalf("expected %+v, got %+v", tc.expected, features)
+			}
+		})
+	}
+}
+
+func featuresEqual(a, b domain.AudioFeatures, tol float64) bool {
+	return floatEquals(a.Danceability, b.Danceability, tol) &&
+		floatEquals(a.Energy, b.Energy, tol) &&
+		floatEquals(a.Valence, b.Valence, tol) &&
+		floatEquals(a.Tempo, b.Tempo, tol) &&
+		floatEquals(a.Instrumentalness, b.Instrumentalness, tol) &&
+		floatEquals(a.Acousticness, b.Acousticness, tol)
+}
+
+func floatEquals(a, b, tol float64) bool {
+	return math.Abs(a-b) <= tol
 }

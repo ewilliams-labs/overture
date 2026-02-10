@@ -75,3 +75,27 @@ func (o *Orchestrator) CreatePlaylist(ctx context.Context, name string) (domain.
 
 	return newPlaylist, nil
 }
+
+// GetPlaylist loads a playlist by ID from the repository.
+func (o *Orchestrator) GetPlaylist(ctx context.Context, playlistID string) (domain.Playlist, error) {
+	if playlistID == "" {
+		return domain.Playlist{}, fmt.Errorf("service: playlist id cannot be empty")
+	}
+
+	pl, err := o.repo.GetByID(ctx, playlistID)
+	if err != nil {
+		return domain.Playlist{}, fmt.Errorf("service: failed to load playlist: %w", err)
+	}
+
+	return pl, nil
+}
+
+// GetPlaylistAnalysis loads a playlist and returns its analyzed audio features.
+func (o *Orchestrator) GetPlaylistAnalysis(ctx context.Context, id string) (domain.AudioFeatures, error) {
+	playlist, err := o.repo.GetByID(ctx, id)
+	if err != nil {
+		return domain.AudioFeatures{}, fmt.Errorf("service: failed to load playlist: %w", err)
+	}
+
+	return playlist.Analyze(), nil
+}

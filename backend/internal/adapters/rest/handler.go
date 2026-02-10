@@ -40,6 +40,8 @@ func (h *Handler) routes() {
 	// Playlist Management
 	h.router.HandleFunc("POST /tracks", h.AddTrack)
 	h.router.HandleFunc("POST /playlists", h.CreatePlaylist)
+	h.router.HandleFunc("GET /playlists/{id}", h.GetPlaylist)
+	h.router.HandleFunc("GET /playlists/{id}/analysis", h.GetPlaylistAnalysis)
 }
 
 // HealthCheck is a simple endpoint to verify the API is running.

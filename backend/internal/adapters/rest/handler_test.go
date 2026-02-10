@@ -39,9 +39,17 @@ func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackI
 
 type mockRepo struct {
 	shouldFailSave bool
+	getErr         error
+	playlist       domain.Playlist
 }
 
 func (m *mockRepo) GetByID(ctx context.Context, id string) (domain.Playlist, error) {
+	if m.getErr != nil {
+		return domain.Playlist{}, m.getErr
+	}
+	if m.playlist.ID != "" {
+		return m.playlist, nil
+	}
 	return domain.Playlist{ID: id, Name: "Test Playlist", Tracks: []domain.Track{}}, nil
 }
 
@@ -192,6 +200,166 @@ func TestHandler_CreatePlaylist(t *testing.T) {
 			}
 			if !strings.Contains(rec.Body.String(), tc.expectedBody) {
 				t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), tc.expectedBody)
+			}
+		})
+	}
+}
+
+func TestHandler_GetPlaylist(t *testing.T) {
+	tests := []struct {
+		name           string
+		playlistID     string
+		mockGetErr     error
+		expectedStatus int
+		expectedBody   string
+		useRouter      bool
+	}{
+		{
+			name:           "Bad Request: empty id",
+			playlistID:     "",
+			mockGetErr:     nil,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "service: playlist id cannot be empty",
+			useRouter:      false,
+		},
+		{
+			name:           "Server Error: repo get fails",
+			playlistID:     "pl-1",
+			mockGetErr:     errors.New("get failed"),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "service: failed to load playlist",
+			useRouter:      true,
+		},
+		{
+			name:           "Success: returns playlist",
+			playlistID:     "pl-2",
+			mockGetErr:     nil,
+			expectedStatus: http.StatusOK,
+			expectedBody:   "\"id\":\"pl-2\"",
+			useRouter:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockRepo{getErr: tt.mockGetErr}
+			svc := services.NewOrchestrator(&mockSpotify{}, repo)
+			h := NewHandler(svc)
+
+			var req *http.Request
+			if tt.useRouter {
+				req = httptest.NewRequest(http.MethodGet, "/playlists/"+tt.playlistID, nil)
+			} else {
+				req = httptest.NewRequest(http.MethodGet, "/playlists", nil)
+				req.SetPathValue("id", tt.playlistID)
+			}
+
+			rec := httptest.NewRecorder()
+			if tt.useRouter {
+				h.ServeHTTP(rec, req)
+			} else {
+				h.GetPlaylist(rec, req)
+			}
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("Status Code: got %d, want %d", rec.Code, tt.expectedStatus)
+			}
+			if !strings.Contains(rec.Body.String(), tt.expectedBody) {
+				t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), tt.expectedBody)
+			}
+		})
+	}
+}
+
+func TestHandler_GetPlaylistAnalysis(t *testing.T) {
+	tests := []struct {
+		name           string
+		playlistID     string
+		mockGetErr     error
+		playlist       domain.Playlist
+		expectedStatus int
+		expectedBody   string
+		useRouter      bool
+	}{
+		{
+			name:           "Bad Request: empty id",
+			playlistID:     "",
+			mockGetErr:     nil,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "playlist id is required",
+			useRouter:      false,
+		},
+		{
+			name:           "Server Error: repo get fails",
+			playlistID:     "pl-1",
+			mockGetErr:     errors.New("get failed"),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "service: failed to load playlist",
+			useRouter:      true,
+		},
+		{
+			name:       "Success: returns analysis",
+			playlistID: "pl-2",
+			playlist: domain.Playlist{
+				ID:   "pl-2",
+				Name: "Test Playlist",
+				Tracks: []domain.Track{
+					{
+						ID: "t1",
+						Features: domain.AudioFeatures{
+							Danceability:    0.25,
+							Energy:          0.25,
+							Valence:         0.25,
+							Tempo:           100,
+							Instrumentalness: 0.0,
+							Acousticness:    0.0,
+						},
+					},
+					{
+						ID: "t2",
+						Features: domain.AudioFeatures{
+							Danceability:    0.75,
+							Energy:          0.75,
+							Valence:         0.75,
+							Tempo:           120,
+							Instrumentalness: 1.0,
+							Acousticness:    1.0,
+						},
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "\"danceability\":0.5",
+			useRouter:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockRepo{getErr: tt.mockGetErr, playlist: tt.playlist}
+			svc := services.NewOrchestrator(&mockSpotify{}, repo)
+			h := NewHandler(svc)
+
+			var req *http.Request
+			if tt.useRouter {
+				req = httptest.NewRequest(http.MethodGet, "/playlists/"+tt.playlistID+"/analysis", nil)
+			} else {
+				req = httptest.NewRequest(http.MethodGet, "/playlists/analysis", nil)
+				req.SetPathValue("id", tt.playlistID)
+			}
+
+			rec := httptest.NewRecorder()
+			if tt.useRouter {
+				h.ServeHTTP(rec, req)
+			} else {
+				h.GetPlaylistAnalysis(rec, req)
+			}
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("Status Code: got %d, want %d", rec.Code, tt.expectedStatus)
+			}
+			if !strings.Contains(rec.Body.String(), tt.expectedBody) {
+				t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), tt.expectedBody)
 			}
 		})
 	}
