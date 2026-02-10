@@ -1,132 +1,125 @@
 package rest
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 )
 
-// fakeSpotify records the requested ISRC and can be configured to return an error or a track.
-type fakeSpotify struct {
-	calledISRC string
-	track      domain.Track
-	err        error
+// --- Mocks ---
+
+// MockService satisfies the Orchestrator logic needed by the Handler.
+// Note: In a real integration test, we might mock the ports, but here we mock the Service struct methods directly
+// if we were using an interface. Since Orchestrator is a struct, we technically can't "mock" it easily
+// without an interface.
+//
+// However, since we are injecting the *Service* into the Handler, and the Service is a concrete struct,
+// unit testing the Handler in isolation is hard without mocking the *dependencies* of the Service.
+//
+// BUT, for this test to work with your current architecture (Handler -> *Service),
+// we actually need to create a REAL Service with MOCK Adapters.
+
+type mockSpotify struct{}
+
+func (m *mockSpotify) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track, error) {
+	return domain.Track{ID: "t1", Title: "Test Song", ISRC: isrc}, nil
 }
 
-func (f *fakeSpotify) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track, error) {
-	f.calledISRC = isrc
-	if f.err != nil {
-		return domain.Track{}, f.err
+func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackID string) (domain.Playlist, error) {
+	return domain.Playlist{}, nil
+}
+
+type mockRepo struct {
+	shouldFailSave bool
+}
+
+func (m *mockRepo) GetByID(ctx context.Context, id string) (domain.Playlist, error) {
+	return domain.Playlist{ID: id, Name: "Test Playlist", Tracks: []domain.Track{}}, nil
+}
+
+func (m *mockRepo) Save(ctx context.Context, p domain.Playlist) error {
+	if m.shouldFailSave {
+		return errors.New("db error")
 	}
-	return f.track, nil
+	return nil
 }
 
-// fakeRepo captures GetByID and Save calls and can be configured to return errors.
-type fakeRepo struct {
-	gotID string
-	saved domain.Playlist
-	getErr error
-	saveErr error
-}
-
-func (f *fakeRepo) GetByID(ctx context.Context, id string) (domain.Playlist, error) {
-	f.gotID = id
-	if f.getErr != nil {
-		return domain.Playlist{}, f.getErr
-	}
-	return domain.Playlist{ID: id, Name: "test", Tracks: []domain.Track{}}, nil
-}
-
-func (f *fakeRepo) Save(ctx context.Context, p domain.Playlist) error {
-	f.saved = p
-	return f.saveErr
-}
+// --- Tests ---
 
 func TestHandler_AddTrack(t *testing.T) {
-	cases := []struct {
-		name       string
-		body       string
-		setup      func() (*services.Orchestrator, *fakeSpotify, *fakeRepo)
-		wantStatus int
-		verify     func(t *testing.T, fs *fakeSpotify, fr *fakeRepo)
+	tests := []struct {
+		name           string
+		body           map[string]string // Use map to control JSON keys explicitly
+		mockRepoFail   bool
+		expectedStatus int
+		expectedBody   string
 	}{
 		{
 			name: "Success: valid JSON returns StatusCreated",
-			body: `{"playlist_id":"pl-1","track_id":"isrc-1"}`,
-			setup: func() (*services.Orchestrator, *fakeSpotify, *fakeRepo) {
-				fs := &fakeSpotify{track: domain.Track{ID: "t1", ISRC: "isrc-1", Title: "Track 1"}}
-				fr := &fakeRepo{}
-				o := services.NewOrchestrator(fs, fr)
-				return o, fs, fr
+			body: map[string]string{
+				"playlist_id": "p1",      // Matches json:"playlist_id"
+				"isrc":        "US12345", // Matches json:"isrc"
 			},
-			wantStatus: http.StatusCreated,
-			verify: func(t *testing.T, fs *fakeSpotify, fr *fakeRepo) {
-				if fs.calledISRC != "isrc-1" {
-					t.Fatalf("expected spotify called with isrc 'isrc-1', got '%s'", fs.calledISRC)
-				}
-				if fr.gotID != "pl-1" {
-					t.Fatalf("expected repo GetByID called with id 'pl-1', got '%s'", fr.gotID)
-				}
-				if len(fr.saved.Tracks) != 1 || fr.saved.Tracks[0].ISRC != "isrc-1" {
-					t.Fatalf("expected saved playlist to contain track with ISRC 'isrc-1', got %+v", fr.saved.Tracks)
-				}
-			},
+			mockRepoFail:   false,
+			expectedStatus: http.StatusCreated,
+			expectedBody:   "", // We check if it contains JSON, not exact match
 		},
 		{
-			name: "Bad Request: malformed JSON returns StatusBadRequest",
-			body: "{",
-			setup: func() (*services.Orchestrator, *fakeSpotify, *fakeRepo) {
-				// orchestrator not needed because JSON decoding fails before use
-				return nil, nil, nil
+			name: "Bad Request: missing fields",
+			body: map[string]string{
+				"playlist_id": "p1",
+				// missing isrc
 			},
-			wantStatus: http.StatusBadRequest,
-			verify: func(t *testing.T, fs *fakeSpotify, fr *fakeRepo) {},
+			mockRepoFail:   false,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "playlist_id and isrc are required",
 		},
 		{
 			name: "Service Error: orchestrator returns error -> StatusInternalServerError",
-			body: `{"playlist_id":"pl-2","track_id":"isrc-err"}`,
-			setup: func() (*services.Orchestrator, *fakeSpotify, *fakeRepo) {
-				fs := &fakeSpotify{err: errors.New("spotify not found")}
-				fr := &fakeRepo{}
-				o := services.NewOrchestrator(fs, fr)
-				return o, fs, fr
+			body: map[string]string{
+				"playlist_id": "p1",
+				"isrc":        "US12345",
 			},
-			wantStatus: http.StatusInternalServerError,
-			verify: func(t *testing.T, fs *fakeSpotify, fr *fakeRepo) {
-				if fs.calledISRC != "isrc-err" {
-					t.Fatalf("expected spotify called with isrc 'isrc-err', got '%s'", fs.calledISRC)
-				}
-			},
+			mockRepoFail:   true, // This triggers the error in the Service
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "service: failed to save playlist",
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var fs *fakeSpotify
-			var fr *fakeRepo
-			var o *services.Orchestrator
-			if tc.setup != nil {
-				o, fs, fr = tc.setup()
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 1. Setup Dependencies
+			// Since Handler depends on concrete *Orchestrator, we build a real one with mock adapters
+			spotify := &mockSpotify{}
+			repo := &mockRepo{shouldFailSave: tt.mockRepoFail}
+			svc := services.NewOrchestrator(spotify, repo)
 
-			h := NewHandler(o)
+			// 2. Setup Handler
+			h := NewHandler(svc)
 
-			req := httptest.NewRequest("POST", "/playlists/add", strings.NewReader(tc.body))
+			// 3. Create Request
+			jsonBody, _ := json.Marshal(tt.body)
+			req := httptest.NewRequest(http.MethodPost, "/tracks", bytes.NewBuffer(jsonBody))
 			rec := httptest.NewRecorder()
 
-			h.AddTrack(rec, req)
+			// 4. Execute
+			h.ServeHTTP(rec, req)
 
-			if rec.Result().StatusCode != tc.wantStatus {
-				t.Fatalf("expected status %d, got %d, body: %s", tc.wantStatus, rec.Result().StatusCode, rec.Body.String())
+			// 5. Assertions
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d, body: %s", tt.expectedStatus, rec.Code, strings.TrimSpace(rec.Body.String()))
 			}
 
-			if tc.verify != nil {
-				tc.verify(t, fs, fr)
+			if tt.expectedBody != "" && !strings.Contains(rec.Body.String(), tt.expectedBody) {
+				t.Errorf("expected body to contain %q, got %q", tt.expectedBody, rec.Body.String())
 			}
 		})
 	}

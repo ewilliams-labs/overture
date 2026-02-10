@@ -1,47 +1,50 @@
-// Package rest provides HTTP handlers for the Overture API.
 package rest
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 )
 
+// Handler manages the HTTP interface for our application.
 type Handler struct {
-	orchestrator *services.Orchestrator
+	svc    *services.Orchestrator // Dependency on the Core Service
+	router *http.ServeMux         // Standard library router
 }
 
-// NewHandler creates and returns a new Handler instance initialized with the provided Orchestrator service.
-// The Handler is responsible for managing HTTP request handling operations that depend on the orchestrator.
-func NewHandler(orchestrator *services.Orchestrator) *Handler {
-	return &Handler{
-		orchestrator: orchestrator,
+// NewHandler initializes the HTTP adapter and sets up routes.
+func NewHandler(svc *services.Orchestrator) *Handler {
+	h := &Handler{
+		svc:    svc,
+		router: http.NewServeMux(),
 	}
+
+	// Register Routes
+	h.routes()
+
+	return h
 }
 
-type addTrackRequest struct {
-	PlaylistID string `json:"playlist_id"`
-	TrackID    string `json:"track_id"`
+// ServeHTTP satisfies the http.Handler interface.
+// It acts as a proxy, passing the request to our internal router.
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.router.ServeHTTP(w, r)
 }
 
-func (h *Handler) AddTrack(w http.ResponseWriter, r *http.Request) {
-	var req addTrackRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
+// routes defines the mapping between URLs and methods.
+func (h *Handler) routes() {
+	// Health Check
+	h.router.HandleFunc("GET /health", h.HealthCheck)
 
-	if req.PlaylistID == "" || req.TrackID == "" {
-		http.Error(w, "playlist_id and track_id are required", http.StatusBadRequest)
-		return
-	}
+	// --- ADD THIS LINE ---
+	// "POST /tracks" works in Go 1.22+
+	h.router.HandleFunc("POST /tracks", h.AddTrack)
+}
 
-	if err := h.orchestrator.AddTrackToPlaylist(r.Context(), req.PlaylistID, req.TrackID); err != nil {
-		http.Error(w, fmt.Sprintf("failed to add track: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
+// HealthCheck is a simple endpoint to verify the API is running.
+func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Overture is live 🎶"})
 }
