@@ -1,11 +1,5 @@
 package spotify
 
-import (
-	"strings"
-
-	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
-)
-
 // spotifyTrack represents the messy JSON from Spotify
 type spotifyTrack struct {
 	ID         string `json:"id"`
@@ -41,41 +35,6 @@ type spotifyPlaylist struct {
 			Track spotifyTrack `json:"track"` // The wrapper!
 		} `json:"items"`
 	} `json:"tracks"`
-}
-
-// toDomain combines the track metadata and audio features into a clean Domain entity
-func (st spotifyTrack) toDomain(features spotifyAudioFeatures) domain.Track {
-	// 1. Flatten Artists (List -> String)
-	var artistNames []string
-	for _, a := range st.Artists {
-		artistNames = append(artistNames, a.Name)
-	}
-
-	// 2. Extract Album Cover
-	coverURL := ""
-	if len(st.Album.Images) > 0 {
-		coverURL = st.Album.Images[0].URL
-	}
-
-	// 3. Map to Domain
-	return domain.Track{
-		ID:         st.ID,
-		Title:      st.Name,
-		Artist:     strings.Join(artistNames, ", "),
-		Album:      st.Album.Name,
-		CoverURL:   coverURL,
-		DurationMs: st.DurationMs,
-
-		// Map the features cleanly
-		Features: domain.AudioFeatures{
-			Danceability:     features.Danceability,
-			Energy:           features.Energy,
-			Valence:          features.Valence,
-			Tempo:            features.Tempo,
-			Instrumentalness: features.Instrumentalness,
-			Acousticness:     features.Acousticness,
-		},
-	}
 }
 
 // addTrackRequest represents the request body for adding a track to a playlist.

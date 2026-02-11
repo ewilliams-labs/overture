@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/spotify"
@@ -153,6 +154,29 @@ func TestGetTrackByMetadata(t *testing.T) {
 			response:   `{ "tracks": { "items": [] } }`,
 			expectErr:  true,
 		},
+		{
+			name:       "top result does not match",
+			title:      "Desired Track",
+			artist:     "Desired Artist",
+			statusCode: http.StatusOK,
+			response: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "2",
+							"name": "Different Track",
+							"duration_ms": 200000,
+							"artists": [ { "name": "Other Artist" } ],
+							"album": {
+								"name": "Other Album",
+								"images": [ { "url": "http://img.com/2.jpg" } ]
+							}
+						}
+					]
+				}
+			}`,
+			expectErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,7 +186,7 @@ func TestGetTrackByMetadata(t *testing.T) {
 					t.Errorf("Expected URL path /search, got %s", r.URL.Path)
 				}
 				query := r.URL.Query()
-				expectedQuery := "track:" + tt.title + " artist:" + tt.artist
+				expectedQuery := "track:" + strings.ToLower(tt.title) + " artist:" + strings.ToLower(tt.artist)
 				if query.Get("q") != expectedQuery {
 					t.Errorf("q param: got %q, want %q", query.Get("q"), expectedQuery)
 				}
@@ -406,7 +430,7 @@ func TestGetTrack(t *testing.T) {
 				switch {
 				case r.URL.Path == "/search":
 					query := r.URL.Query()
-					expectedQuery := "track:" + tt.title + " artist:" + tt.artist
+					expectedQuery := "track:" + strings.ToLower(tt.title) + " artist:" + strings.ToLower(tt.artist)
 					if query.Get("q") != expectedQuery {
 						t.Errorf("q param: got %q, want %q", query.Get("q"), expectedQuery)
 					}

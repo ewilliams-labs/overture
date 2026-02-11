@@ -1,4 +1,5 @@
 set shell := ["bash", "-cu"]
+set dotenv-load := true
 
 run:
 	go run cmd/api/main.go

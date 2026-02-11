@@ -24,6 +24,12 @@
 - **Errors:** Wrap errors with context: `fmt.Errorf("description: %w", err)`.
 - **Naming:** Use short, idiomatic Go names (e.g., `ctx`, `err`, `svc`, `h` for handler).
 
+## Spotify Adapter (Go)
+- Keep adapter scope tight: Wire (HTTP/API), Mapping (JSON to Domain), Logic (Normalization/Scoring).
+- If any of those exceed ~150 lines, split into dedicated files inside the package.
+- Use a domain-agnostic normalization helper for title/artist noise cleanup.
+- Verify matches with Levenshtein distance before accepting the top result.
+
 ## Frontend (React/TypeScript)
 - **Architecture:** Feature-Sliced Design (FSD).
 - **Styling:** Use Tailwind CSS.
