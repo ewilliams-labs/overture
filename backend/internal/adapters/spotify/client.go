@@ -1,3 +1,4 @@
+// Package spotify provides the Spotify API adapter implementing the ports.TrackSearcher interface.
 package spotify
 
 import (

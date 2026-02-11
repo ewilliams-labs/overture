@@ -36,8 +36,3 @@ type spotifyPlaylist struct {
 		} `json:"items"`
 	} `json:"tracks"`
 }
-
-// addTrackRequest represents the request body for adding a track to a playlist.
-type addTrackRequest struct {
-	Uris []string `json:"uris"`
-}

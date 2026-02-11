@@ -40,4 +40,3 @@ A high-performance, context-aware playlist orchestration engine.
 - **Acousticness (0.0 - 1.0):** A confidence measure of whether the track is acoustic (1.0) versus electronic/amplified (0.0).
 - **Instrumentalness (0.0 - 1.0):** Predicts whether a track contains no vocals. Values above 0.5 are intended to represent instrumental tracks.
 - **Tempo (BPM):** The overall estimated tempo of a track in beats per minute.
-
