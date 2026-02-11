@@ -25,33 +25,33 @@ func NewOrchestrator(spotify ports.SpotifyProvider, repo ports.PlaylistRepositor
 }
 
 // AddTrackToPlaylist fetches a track from Spotify, adds it to the local playlist, and saves it.
-// UPDATED: Now returns (domain.Playlist, error)
-func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string, title string, artist string) (domain.Playlist, error) {
+// It returns the playlist ID on success.
+func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string, title string, artist string) (string, error) {
 	// 1. Fetch track metadata from Spotify
 	track, err := o.spotify.GetTrackByMetadata(ctx, title, artist)
 	if err != nil {
-		return domain.Playlist{}, fmt.Errorf("service: failed to fetch track: %w", err)
+		return "", fmt.Errorf("service: failed to fetch track: %w", err)
 	}
 
 	// 2. Load playlist from local repository
 	plVal, err := o.repo.GetByID(ctx, playlistID)
 	if err != nil {
-		return domain.Playlist{}, fmt.Errorf("service: failed to load playlist: %w", err)
+		return "", fmt.Errorf("service: failed to load playlist: %w", err)
 	}
 
 	// 3. Mutate the playlist (Pure Domain Logic)
 	pl := &plVal
 	if err := pl.AddTrack(track); err != nil {
-		return domain.Playlist{}, fmt.Errorf("service: domain rule violation: %w", err)
+		return "", fmt.Errorf("service: domain rule violation: %w", err)
 	}
 
 	// 4. Persist the updated playlist
 	if err := o.repo.Save(ctx, *pl); err != nil {
-		return domain.Playlist{}, fmt.Errorf("service: failed to save playlist: %w", err)
+		return "", fmt.Errorf("service: failed to save playlist: %w", err)
 	}
 
-	// 5. Return the updated playlist so the UI can update immediately
-	return *pl, nil
+	// 5. Return the playlist ID so clients can fetch details if needed
+	return playlistID, nil
 }
 
 // CreatePlaylist initializes a new empty playlist and persists it.

@@ -78,12 +78,15 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 				repo:    &tc.fields.repo,
 			}
 
-			// UPDATED: Capture both return values (playlist and error)
-			_, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
+			playlistID, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
 
 			// Check error expectation
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("unexpected error state: got err=%v wantErr=%v", err, tc.wantErr)
+			}
+
+			if !tc.wantErr && playlistID != "pl-1" {
+				t.Fatalf("expected playlist id %q, got %q", "pl-1", playlistID)
 			}
 
 			// Check persistence expectation

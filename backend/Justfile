@@ -1,0 +1,13 @@
+set shell := ["bash", "-cu"]
+
+run:
+	go run cmd/api/main.go
+
+tidy:
+	go mod tidy
+
+test:
+	go test ./...
+
+validate:
+	scripts/validate-endpoints.sh

@@ -78,7 +78,7 @@ func TestHandler_AddTrack(t *testing.T) {
 			},
 			mockRepoFail:   false,
 			expectedStatus: http.StatusCreated,
-			expectedBody:   "", // We check if it contains JSON, not exact match
+			expectedBody:   "\"id\":\"p1\"",
 		},
 		{
 			name: "Bad Request: missing fields",
