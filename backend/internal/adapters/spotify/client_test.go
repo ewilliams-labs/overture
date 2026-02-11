@@ -2,6 +2,8 @@ package spotify_test
 
 import (
 	"context"
+	"hash/fnv"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,19 +29,16 @@ func compareTracks(t *testing.T, got, want domain.Track) {
 	if got.ISRC != want.ISRC {
 		t.Errorf("ISRC: got %v, want %v", got.ISRC, want.ISRC)
 	}
-	// Check new fields
 	if got.DurationMs != want.DurationMs {
 		t.Errorf("DurationMs: got %v, want %v", got.DurationMs, want.DurationMs)
 	}
-	// Note: We don't strictly compare CoverURL in these basic tests unless explicitly set
 
 	compareFeatures(t, got.Features, want.Features)
 }
 
 func compareFeatures(t *testing.T, got, want domain.AudioFeatures) {
 	t.Helper()
-	// Compare floating point values with a small epsilon if needed,
-	// but direct comparison is usually fine for test constants.
+
 	if got.Energy != want.Energy {
 		t.Errorf("Features.Energy: got %v, want %v", got.Energy, want.Energy)
 	}
@@ -48,6 +47,15 @@ func compareFeatures(t *testing.T, got, want domain.AudioFeatures) {
 	}
 	if got.Danceability != want.Danceability {
 		t.Errorf("Features.Danceability: got %v, want %v", got.Danceability, want.Danceability)
+	}
+	if got.Acousticness != want.Acousticness {
+		t.Errorf("Features.Acousticness: got %v, want %v", got.Acousticness, want.Acousticness)
+	}
+	if got.Instrumentalness != want.Instrumentalness {
+		t.Errorf("Features.Instrumentalness: got %v, want %v", got.Instrumentalness, want.Instrumentalness)
+	}
+	if got.Tempo != want.Tempo {
+		t.Errorf("Features.Tempo: got %v, want %v", got.Tempo, want.Tempo)
 	}
 }
 
@@ -72,12 +80,33 @@ func comparePlaylists(t *testing.T, got, want domain.Playlist) {
 	}
 }
 
+func deterministicFeatures(trackID string) domain.AudioFeatures {
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(trackID))
+	seed := int64(hasher.Sum32())
+	rng := rand.New(rand.NewSource(seed))
+
+	between := func(min, max float64) float64 {
+		return min + rng.Float64()*(max-min)
+	}
+
+	return domain.AudioFeatures{
+		Energy:           between(0.1, 0.9),
+		Valence:          between(0.1, 0.9),
+		Danceability:     between(0.1, 0.9),
+		Acousticness:     between(0.1, 0.9),
+		Instrumentalness: between(0.1, 0.9),
+		Tempo:            between(60.0, 180.0),
+	}
+}
+
 // --- Tests ---
 
-func TestGetTrackByISRC(t *testing.T) {
+func TestGetTrackByMetadata(t *testing.T) {
 	tests := []struct {
 		name          string
-		isrc          string
+		title         string
+		artist        string
 		response      string
 		statusCode    int
 		expectedTrack domain.Track
@@ -85,9 +114,9 @@ func TestGetTrackByISRC(t *testing.T) {
 	}{
 		{
 			name:       "successful track retrieval",
-			isrc:       "US1234567890",
+			title:      "Test Track",
+			artist:     "Test Artist",
 			statusCode: http.StatusOK,
-			// MOCK: Search API Structure (Wrapper -> Items -> Track -> Nested Fields)
 			response: `{
 				"tracks": {
 					"items": [
@@ -96,11 +125,10 @@ func TestGetTrackByISRC(t *testing.T) {
 							"name": "Test Track",
 							"duration_ms": 200000,
 							"artists": [ { "name": "Test Artist" } ],
-							"album": { 
-								"name": "Test Album", 
-								"images": [ { "url": "http://img.com/1.jpg" } ] 
-							},
-							"external_ids": { "isrc": "US1234567890" }
+							"album": {
+								"name": "Test Album",
+								"images": [ { "url": "http://img.com/1.jpg" } ]
+							}
 						}
 					]
 				}
@@ -108,20 +136,20 @@ func TestGetTrackByISRC(t *testing.T) {
 			expectedTrack: domain.Track{
 				ID:         "1",
 				Title:      "Test Track",
-				Artist:     "Test Artist", // Flattened
-				Album:      "Test Album",  // Flattened
+				Artist:     "Test Artist",
+				Album:      "Test Album",
 				CoverURL:   "http://img.com/1.jpg",
 				DurationMs: 200000,
-				ISRC:       "US1234567890",
-				// Features are nil/empty because GetTrackByISRC (Search) doesn't return them
-				Features: domain.AudioFeatures{},
+				ISRC:       "",
+				Features:   domain.AudioFeatures{},
 			},
 			expectErr: false,
 		},
 		{
 			name:       "not found (empty items list)",
-			isrc:       "INVALID",
-			statusCode: http.StatusOK, // Search returns 200 OK with empty list
+			title:      "Missing Track",
+			artist:     "Missing Artist",
+			statusCode: http.StatusOK,
 			response:   `{ "tracks": { "items": [] } }`,
 			expectErr:  true,
 		},
@@ -130,26 +158,28 @@ func TestGetTrackByISRC(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Verify we are calling the Search endpoint
 				if r.URL.Path != "/search" {
 					t.Errorf("Expected URL path /search, got %s", r.URL.Path)
+				}
+				query := r.URL.Query()
+				expectedQuery := "track:" + tt.title + " artist:" + tt.artist
+				if query.Get("q") != expectedQuery {
+					t.Errorf("q param: got %q, want %q", query.Get("q"), expectedQuery)
+				}
+				if query.Get("type") != "track" {
+					t.Errorf("type param: got %q, want %q", query.Get("type"), "track")
+				}
+				if query.Get("limit") != "1" {
+					t.Errorf("limit param: got %q, want %q", query.Get("limit"), "1")
 				}
 				w.WriteHeader(tt.statusCode)
 				w.Write([]byte(tt.response))
 			}))
 			defer ts.Close()
 
-			client := spotify.NewClient("test-id", "test-secret")
-			// Inject the test server URL using a setter or by modifying the client struct directly if public.
-			// Ideally, NewClient should accept a base URL option, OR we modify it for the test.
-			// For this specific test setup to work with your current code, you might need:
-			// client.SetBaseURL(ts.URL) -> (If you implemented this method)
-			// OR use the constructor if it supports it.
-			// Assuming you have: NewClient(httpClient, baseURL) as per previous context:
-			client = spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
+			client := spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
 
-			track, err := client.GetTrackByISRC(context.Background(), tt.isrc)
-
+			track, err := client.GetTrackByMetadata(context.Background(), tt.title, tt.artist)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("expected error: %v, got: %v", tt.expectErr, err)
 			}
@@ -175,8 +205,7 @@ func TestAddTrackToPlaylist(t *testing.T) {
 			name:       "successful track addition",
 			playlistID: "p1",
 			trackID:    "t1",
-			statusCode: http.StatusOK, // or 201 Created depending on API
-			// MOCK: Playlist Structure (Tracks wrapped in Paging Object -> Items -> 'track' wrapper)
+			statusCode: http.StatusOK,
 			response: `{
 				"id": "p1",
 				"name": "Test Playlist",
@@ -187,8 +216,7 @@ func TestAddTrackToPlaylist(t *testing.T) {
 								"id": "t1",
 								"name": "Test Track",
 								"artists": [ { "name": "Test Artist" } ],
-								"album": { "name": "Test Album", "images": [] },
-								"external_ids": { "isrc": "US123" }
+								"album": { "name": "Test Album", "images": [] }
 							}
 						}
 					]
@@ -203,7 +231,7 @@ func TestAddTrackToPlaylist(t *testing.T) {
 						Title:  "Test Track",
 						Artist: "Test Artist",
 						Album:  "Test Album",
-						ISRC:   "US123",
+						ISRC:   "",
 					},
 				},
 			},
@@ -219,11 +247,9 @@ func TestAddTrackToPlaylist(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			// Assuming NewClientWithBaseURL exists for testing, or standard NewClient
 			client := spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
 
 			playlist, err := client.AddTrackToPlaylist(context.Background(), tt.playlistID, tt.trackID)
-
 			if (err != nil) != tt.expectErr {
 				t.Errorf("expected error: %v, got: %v", tt.expectErr, err)
 			}
@@ -238,7 +264,8 @@ func TestAddTrackToPlaylist(t *testing.T) {
 func TestGetTrack(t *testing.T) {
 	tests := []struct {
 		name           string
-		isrc           string
+		title          string
+		artist         string
 		searchStatus   int
 		searchBody     string
 		featuresStatus int
@@ -249,14 +276,16 @@ func TestGetTrack(t *testing.T) {
 	}{
 		{
 			name:         "not found",
-			isrc:         "BAD",
+			title:        "Missing Track",
+			artist:       "Missing Artist",
 			searchStatus: http.StatusOK,
 			searchBody:   `{ "tracks": { "items": [] } }`,
 			expectErr:    true,
 		},
 		{
 			name:         "success with features",
-			isrc:         "US1234567890",
+			title:        "Test Track",
+			artist:       "Test Artist",
 			searchStatus: http.StatusOK,
 			searchBody: `{
 				"tracks": {
@@ -266,8 +295,7 @@ func TestGetTrack(t *testing.T) {
 							"name": "Test Track",
 							"duration_ms": 210000,
 							"artists": [ { "name": "Test Artist" } ],
-							"album": { "name": "Test Album", "images": [ { "url": "http://img.com/cover.jpg" } ] },
-							"external_ids": { "isrc": "US1234567890" }
+							"album": { "name": "Test Album", "images": [ { "url": "http://img.com/cover.jpg" } ] }
 						}
 					]
 				}
@@ -289,7 +317,7 @@ func TestGetTrack(t *testing.T) {
 				Album:      "Test Album",
 				CoverURL:   "http://img.com/cover.jpg",
 				DurationMs: 210000,
-				ISRC:       "US1234567890",
+				ISRC:       "",
 			},
 			wantFeatures: domain.AudioFeatures{
 				Danceability:     0.5,
@@ -300,6 +328,75 @@ func TestGetTrack(t *testing.T) {
 				Acousticness:     0.4,
 			},
 		},
+		{
+			name:         "features restricted falls back to deterministic",
+			title:        "Restricted Track",
+			artist:       "Test Artist",
+			searchStatus: http.StatusOK,
+			searchBody: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "track-2",
+							"name": "Restricted Track",
+							"duration_ms": 180000,
+							"artists": [ { "name": "Test Artist" } ],
+							"album": { "name": "Test Album", "images": [] }
+						}
+					]
+				}
+			}`,
+			featuresStatus: http.StatusForbidden,
+			featuresBody:   `{ "error": "restricted" }`,
+			expectErr:      false,
+			want: domain.Track{
+				ID:         "track-2",
+				Title:      "Restricted Track",
+				Artist:     "Test Artist",
+				Album:      "Test Album",
+				DurationMs: 180000,
+				ISRC:       "",
+			},
+			wantFeatures: deterministicFeatures("track-2"),
+		},
+		{
+			name:         "zero features fall back to deterministic",
+			title:        "Zero Features",
+			artist:       "Test Artist",
+			searchStatus: http.StatusOK,
+			searchBody: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "track-3",
+							"name": "Zero Features",
+							"duration_ms": 150000,
+							"artists": [ { "name": "Test Artist" } ],
+							"album": { "name": "Test Album", "images": [] }
+						}
+					]
+				}
+			}`,
+			featuresStatus: http.StatusOK,
+			featuresBody: `{
+				"danceability": 0,
+				"energy": 0,
+				"valence": 0,
+				"tempo": 0,
+				"instrumentalness": 0,
+				"acousticness": 0
+			}`,
+			expectErr: false,
+			want: domain.Track{
+				ID:         "track-3",
+				Title:      "Zero Features",
+				Artist:     "Test Artist",
+				Album:      "Test Album",
+				DurationMs: 150000,
+				ISRC:       "",
+			},
+			wantFeatures: deterministicFeatures("track-3"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -309,8 +406,9 @@ func TestGetTrack(t *testing.T) {
 				switch {
 				case r.URL.Path == "/search":
 					query := r.URL.Query()
-					if query.Get("q") != "isrc:"+tt.isrc {
-						t.Errorf("q param: got %q, want %q", query.Get("q"), "isrc:"+tt.isrc)
+					expectedQuery := "track:" + tt.title + " artist:" + tt.artist
+					if query.Get("q") != expectedQuery {
+						t.Errorf("q param: got %q, want %q", query.Get("q"), expectedQuery)
 					}
 					if query.Get("type") != "track" {
 						t.Errorf("type param: got %q, want %q", query.Get("type"), "track")
@@ -324,6 +422,14 @@ func TestGetTrack(t *testing.T) {
 					featuresCalled = true
 					w.WriteHeader(tt.featuresStatus)
 					w.Write([]byte(tt.featuresBody))
+				case r.URL.Path == "/audio-features/track-2":
+					featuresCalled = true
+					w.WriteHeader(tt.featuresStatus)
+					w.Write([]byte(tt.featuresBody))
+				case r.URL.Path == "/audio-features/track-3":
+					featuresCalled = true
+					w.WriteHeader(tt.featuresStatus)
+					w.Write([]byte(tt.featuresBody))
 				default:
 					t.Fatalf("unexpected path: %s", r.URL.Path)
 				}
@@ -332,7 +438,7 @@ func TestGetTrack(t *testing.T) {
 
 			client := spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
 
-			track, err := client.GetTrack(context.Background(), tt.isrc)
+			track, err := client.GetTrack(context.Background(), tt.title, tt.artist)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("expected error: %v, got: %v", tt.expectErr, err)
 			}

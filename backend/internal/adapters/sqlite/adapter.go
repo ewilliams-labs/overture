@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 	_ "github.com/mattn/go-sqlite3" // Import the driver anonymously
@@ -71,8 +72,8 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 	// 4. Upsert Tracks & Re-link
 	// Prepare statements once for performance
 	stmtTrack, err := tx.PrepareContext(ctx, `
-		INSERT INTO tracks (id, title, artist, album, duration_ms, isrc) 
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO tracks (id, title, artist, album, duration_ms, isrc, cover_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING;
 	`)
 	if err != nil {
@@ -114,6 +115,7 @@ func (a *Adapter) migrate() error {
 		album TEXT,
 		duration_ms INTEGER,
 		isrc TEXT,
+		cover_url TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -132,6 +134,19 @@ func (a *Adapter) migrate() error {
 		FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
 	);
 	`
-	_, err := a.db.Exec(query)
-	return err
+	if _, err := a.db.Exec(query); err != nil {
+		return err
+	}
+
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN cover_url TEXT"); err != nil {
+		if err != nil && !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isDuplicateColumnError(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "duplicate column") || strings.Contains(err.Error(), "already exists"))
 }

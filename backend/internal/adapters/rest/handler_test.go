@@ -29,8 +29,8 @@ import (
 
 type mockSpotify struct{}
 
-func (m *mockSpotify) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track, error) {
-	return domain.Track{ID: "t1", Title: "Test Song", ISRC: isrc}, nil
+func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist string) (domain.Track, error) {
+	return domain.Track{ID: "t1", Title: title, Artist: artist}, nil
 }
 
 func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackID string) (domain.Playlist, error) {
@@ -73,8 +73,8 @@ func TestHandler_AddTrack(t *testing.T) {
 		{
 			name: "Success: valid JSON returns StatusCreated",
 			body: map[string]string{
-				"playlist_id": "p1",      // Matches json:"playlist_id"
-				"isrc":        "US12345", // Matches json:"isrc"
+				"title":  "Song One", // Matches json:"title"
+				"artist": "Artist A", // Matches json:"artist"
 			},
 			mockRepoFail:   false,
 			expectedStatus: http.StatusCreated,
@@ -83,18 +83,17 @@ func TestHandler_AddTrack(t *testing.T) {
 		{
 			name: "Bad Request: missing fields",
 			body: map[string]string{
-				"playlist_id": "p1",
-				// missing isrc
+				// missing title/artist
 			},
 			mockRepoFail:   false,
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "playlist_id and isrc are required",
+			expectedBody:   "title and artist are required",
 		},
 		{
 			name: "Service Error: orchestrator returns error -> StatusInternalServerError",
 			body: map[string]string{
-				"playlist_id": "p1",
-				"isrc":        "US12345",
+				"title":  "Song One",
+				"artist": "Artist A",
 			},
 			mockRepoFail:   true, // This triggers the error in the Service
 			expectedStatus: http.StatusInternalServerError,
@@ -115,7 +114,8 @@ func TestHandler_AddTrack(t *testing.T) {
 
 			// 3. Create Request
 			jsonBody, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest(http.MethodPost, "/tracks", bytes.NewBuffer(jsonBody))
+			req := httptest.NewRequest(http.MethodPost, "/playlists/p1/tracks", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 
 			// 4. Execute
@@ -189,6 +189,7 @@ func TestHandler_CreatePlaylist(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(http.MethodPost, "/playlists", bytes.NewBuffer(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 
 			// 3. Execute

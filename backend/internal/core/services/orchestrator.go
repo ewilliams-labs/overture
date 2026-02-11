@@ -26,9 +26,9 @@ func NewOrchestrator(spotify ports.SpotifyProvider, repo ports.PlaylistRepositor
 
 // AddTrackToPlaylist fetches a track from Spotify, adds it to the local playlist, and saves it.
 // UPDATED: Now returns (domain.Playlist, error)
-func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string, isrc string) (domain.Playlist, error) {
+func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string, title string, artist string) (domain.Playlist, error) {
 	// 1. Fetch track metadata from Spotify
-	track, err := o.spotify.GetTrackByISRC(ctx, isrc)
+	track, err := o.spotify.GetTrackByMetadata(ctx, title, artist)
 	if err != nil {
 		return domain.Playlist{}, fmt.Errorf("service: failed to fetch track: %w", err)
 	}

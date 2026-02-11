@@ -3,6 +3,7 @@ package rest
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
@@ -38,15 +39,44 @@ func (h *Handler) routes() {
 	// Health Check
 	h.router.HandleFunc("GET /health", h.HealthCheck)
 	// Playlist Management
-	h.router.HandleFunc("POST /tracks", h.AddTrack)
 	h.router.HandleFunc("POST /playlists", h.CreatePlaylist)
 	h.router.HandleFunc("GET /playlists/{id}", h.GetPlaylist)
+	h.router.HandleFunc("POST /playlists/{id}/tracks", h.AddTrack)
 	h.router.HandleFunc("GET /playlists/{id}/analysis", h.GetPlaylistAnalysis)
 }
 
 // HealthCheck is a simple endpoint to verify the API is running.
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Overture is live 🎶"})
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+func isJSONContentType(r *http.Request) bool {
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "" {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/json"
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, errorResponse{Error: msg})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Overture is live 🎶"})
+	w.WriteHeader(status)
+	if v == nil {
+		return
+	}
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }

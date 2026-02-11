@@ -20,9 +20,6 @@ type spotifyTrack struct {
 			URL string `json:"url"`
 		} `json:"images"`
 	} `json:"album"` // API is an object, Domain is a string
-	ExternalIDs struct {
-		ISRC string `json:"isrc"`
-	} `json:"external_ids"` // ISRC is nested
 }
 
 // spotifyAudioFeatures represents the separate API call for "Vibes"
@@ -68,7 +65,6 @@ func (st spotifyTrack) toDomain(features spotifyAudioFeatures) domain.Track {
 		Album:      st.Album.Name,
 		CoverURL:   coverURL,
 		DurationMs: st.DurationMs,
-		ISRC:       st.ExternalIDs.ISRC,
 
 		// Map the features cleanly
 		Features: domain.AudioFeatures{
@@ -77,6 +73,7 @@ func (st spotifyTrack) toDomain(features spotifyAudioFeatures) domain.Track {
 			Valence:          features.Valence,
 			Tempo:            features.Tempo,
 			Instrumentalness: features.Instrumentalness,
+			Acousticness:     features.Acousticness,
 		},
 	}
 }

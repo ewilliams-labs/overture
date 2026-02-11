@@ -79,7 +79,7 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 			}
 
 			// UPDATED: Capture both return values (playlist and error)
-			_, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.ISRC)
+			_, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
 
 			// Check error expectation
 			if (err != nil) != tc.wantErr {
@@ -117,11 +117,13 @@ type mockSpotify struct {
 	track domain.Track
 	err   error
 
-	calledISRC string
+	calledTitle  string
+	calledArtist string
 }
 
-func (m *mockSpotify) GetTrackByISRC(ctx context.Context, isrc string) (domain.Track, error) {
-	m.calledISRC = isrc
+func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist string) (domain.Track, error) {
+	m.calledTitle = title
+	m.calledArtist = artist
 	if m.err != nil {
 		return domain.Track{}, m.err
 	}
@@ -136,8 +138,8 @@ func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackI
 
 // mockRepo is a minimal mock for PlaylistRepository.
 type mockRepo struct {
-	getErr  error
-	saveErr error
+	getErr   error
+	saveErr  error
 	playlist domain.Playlist
 
 	called   bool
@@ -315,23 +317,23 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 					{
 						ID: "t1",
 						Features: domain.AudioFeatures{
-							Danceability:    0.2,
-							Energy:          0.4,
-							Valence:         0.6,
-							Tempo:           100,
+							Danceability:     0.2,
+							Energy:           0.4,
+							Valence:          0.6,
+							Tempo:            100,
 							Instrumentalness: 0.1,
-							Acousticness:    0.3,
+							Acousticness:     0.3,
 						},
 					},
 					{
 						ID: "t2",
 						Features: domain.AudioFeatures{
-							Danceability:    0.6,
-							Energy:          0.8,
-							Valence:         0.2,
-							Tempo:           120,
+							Danceability:     0.6,
+							Energy:           0.8,
+							Valence:          0.2,
+							Tempo:            120,
 							Instrumentalness: 0.3,
-							Acousticness:    0.5,
+							Acousticness:     0.5,
 						},
 					},
 				},
@@ -340,12 +342,12 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 			wantCalled:  true,
 			wantIDMatch: true,
 			expected: domain.AudioFeatures{
-				Danceability:    0.4,
-				Energy:          0.6,
-				Valence:         0.4,
-				Tempo:           110,
+				Danceability:     0.4,
+				Energy:           0.6,
+				Valence:          0.4,
+				Tempo:            110,
 				Instrumentalness: 0.2,
-				Acousticness:    0.4,
+				Acousticness:     0.4,
 			},
 		},
 	}

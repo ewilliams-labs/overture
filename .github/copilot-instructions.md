@@ -4,6 +4,7 @@
 - Use `github.com/ewilliams-labs/overture` as the root for all logic references.
 - Prefer functional programming patterns over heavy class inheritance.
 - **Atomic Implementation:** When generating logic, always generate the corresponding unit test file immediately after.
+- Always attempt to execute tests after changes and address issues. If you fail to make progress after 5 attempts, or continue to loop back on the same problem then abort.
 
 ## Backend (Go)
 - **Architecture:** Hexagonal / Ports & Adapters.
@@ -12,6 +13,7 @@
   - Services: `backend/internal/core/services` (Orchestration/Business logic)
   - Adapters: `backend/internal/adapters/` (HTTP, Spotify, Database)
 - **Module Path:** `github.com/ewilliams-labs/overture/backend`
+- **REST:** Any endpoint should implement RESTful best practices.
 - **Testing:** Table-Driven tests only. Use `httptest` for REST adapters.
 - **Context:** Always pass `ctx` (context.Context) as the first argument in IO-bound functions.
 - **Errors:** Wrap errors with context: `fmt.Errorf("description: %w", err)`.

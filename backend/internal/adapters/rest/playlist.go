@@ -11,10 +11,15 @@ type createPlaylistRequest struct {
 
 // CreatePlaylist handles POST /playlists
 func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
+	if !isJSONContentType(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return
+	}
+
 	// 1. Decode Request
 	var req createPlaylistRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -23,19 +28,16 @@ func (h *Handler) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Differentiate errors: Empty name vs DB failure
 		if err.Error() == "service: playlist name cannot be empty" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	// 3. Respond
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated) // 201 Created
-	if err := json.NewEncoder(w).Encode(playlist); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	w.Header().Set("Location", "/playlists/"+playlist.ID)
+	writeJSON(w, http.StatusCreated, playlist)
 }
 
 // GetPlaylist handles GET /playlists/{id}
@@ -45,37 +47,29 @@ func (h *Handler) GetPlaylist(w http.ResponseWriter, r *http.Request) {
 	playlist, err := h.svc.GetPlaylist(r.Context(), playlistID)
 	if err != nil {
 		if err.Error() == "service: playlist id cannot be empty" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(playlist); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	writeJSON(w, http.StatusOK, playlist)
 }
 
 // GetPlaylistAnalysis handles GET /playlists/{id}/analysis
 func (h *Handler) GetPlaylistAnalysis(w http.ResponseWriter, r *http.Request) {
 	playlistID := r.PathValue("id")
 	if playlistID == "" {
-		http.Error(w, "playlist id is required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "playlist id is required")
 		return
 	}
 
 	features, err := h.svc.GetPlaylistAnalysis(r.Context(), playlistID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(features); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	writeJSON(w, http.StatusOK, features)
 }

@@ -29,22 +29,25 @@ func mapTrackToDomain(st spotifyTrack, features *spotifyAudioFeatures) domain.Tr
 		Album:      st.Album.Name,
 		CoverURL:   coverURL,
 		DurationMs: st.DurationMs,
-		ISRC:       st.ExternalIDs.ISRC,
 	}
 
 	// 4. Map Features (if provided)
 	if features != nil {
-		dt.Features = domain.AudioFeatures{
-			Danceability:     features.Danceability,
-			Energy:           features.Energy,
-			Valence:          features.Valence,
-			Tempo:            features.Tempo,
-			Instrumentalness: features.Instrumentalness,
-			Acousticness:     features.Acousticness,
-		}
+		dt.Features = mapFeaturesToDomain(*features)
 	}
 
 	return dt
+}
+
+func mapFeaturesToDomain(features spotifyAudioFeatures) domain.AudioFeatures {
+	return domain.AudioFeatures{
+		Danceability:     features.Danceability,
+		Energy:           features.Energy,
+		Valence:          features.Valence,
+		Tempo:            features.Tempo,
+		Instrumentalness: features.Instrumentalness,
+		Acousticness:     features.Acousticness,
+	}
 }
 
 // mapPlaylistToDomain converts a raw Spotify playlist.
