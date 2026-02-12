@@ -3,6 +3,8 @@ set -e
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 TEST_DATA="${TEST_DATA:-./scripts/acceptence_cases.json}"
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+OLLAMA_OPTIONAL="${OLLAMA_OPTIONAL:-1}"
 
 echo "🚀 Starting Overture Acceptance Suite..."
 
@@ -40,6 +42,14 @@ cat "$TEST_DATA" | jq -c '.[]' | while read -r test; do
     POLL_MIN=$(echo "$test" | jq -r '.poll_json_min // empty')
     POLL_INTERVAL=$(echo "$test" | jq -r '.poll_interval_ms // empty')
     POLL_TIMEOUT=$(echo "$test" | jq -r '.poll_timeout_ms // empty')
+
+    if [ "$ID" = "complex-intent-parsing" ] && [ "$OLLAMA_OPTIONAL" = "1" ]; then
+        OLLAMA_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$OLLAMA_URL/api/tags" || true)
+        if [ "$OLLAMA_STATUS" != "200" ]; then
+            echo "🧪 Testing $ID... ⚠️  Skipped (Ollama not running)"
+            continue
+        fi
+    fi
 
     echo -n "🧪 Testing $ID... "
 

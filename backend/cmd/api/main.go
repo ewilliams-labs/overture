@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ewilliams-labs/overture/backend/internal/adapters/ollama"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/rest"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/spotify"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/sqlite"
@@ -70,7 +71,8 @@ func main() {
 	pool.Start(2)
 	defer pool.Stop()
 
-	handler := rest.NewHandler(svc, pool)
+	intentCompiler := ollama.NewClient(os.Getenv("OLLAMA_URL"))
+	handler := rest.NewHandler(svc, pool, intentCompiler)
 
 	// 5. Start the Server
 	log.Println("------------------------------------------------")

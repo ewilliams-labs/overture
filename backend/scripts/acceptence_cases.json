@@ -36,6 +36,14 @@
     "expected_json_min": 0
   },
   {
+    "id": "complex-intent-parsing",
+    "method": "POST",
+    "path": "/playlists/{{playlist_id}}/intent",
+    "payload": { "message": "Give me Willie Nelson style songs with no auto-tune" },
+    "expected_status": 200,
+    "expected_body_contains": "vibe_constraints\".*explanation"
+  },
+  {
     "id": "worker-job-submission",
     "method": "POST",
     "path": "/playlists/{{playlist_id}}/tracks",

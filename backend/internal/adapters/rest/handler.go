@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
@@ -14,14 +15,16 @@ import (
 type Handler struct {
 	svc    *services.Orchestrator // Dependency on the Core Service
 	pool   *worker.Pool
+	intent ports.IntentCompiler
 	router *http.ServeMux // Standard library router
 }
 
 // NewHandler initializes the HTTP adapter and sets up routes.
-func NewHandler(svc *services.Orchestrator, pool *worker.Pool) *Handler {
+func NewHandler(svc *services.Orchestrator, pool *worker.Pool, intent ports.IntentCompiler) *Handler {
 	h := &Handler{
 		svc:    svc,
 		pool:   pool,
+		intent: intent,
 		router: http.NewServeMux(),
 	}
 
@@ -46,6 +49,7 @@ func (h *Handler) routes() {
 	h.router.HandleFunc("GET /playlists/{id}", h.GetPlaylist)
 	h.router.HandleFunc("POST /playlists/{id}/tracks", h.AddTrack)
 	h.router.HandleFunc("GET /playlists/{id}/analysis", h.GetPlaylistAnalysis)
+	h.router.HandleFunc("POST /playlists/{id}/intent", h.AnalyzeIntent)
 }
 
 // HealthCheck is a simple endpoint to verify the API is running.
