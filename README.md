@@ -16,7 +16,8 @@ A high-performance, context-aware playlist orchestration engine.
 ### Phase 2: The Vibe Engine (Audio Analysis)
 
 - [x] Implement GET /playlists/{id}/analysis endpoint
-- [ ] Build Background Worker for Audio Processing
+- [x] Build Background Worker for Audio Processing
+	- (Worker pool deployed; currently using Deterministic Fallback for missing URLs)
 - [ ] Integration: Go-Audio/FFmpeg for local BPM calculation
 - [ ] Strategy: "Real" analysis with Deterministic Fallback safety net
 
@@ -55,3 +56,5 @@ A high-performance, context-aware playlist orchestration engine.
 - [x] Fail on Low Confidence (422 Unprocessable Entity)
 - [x] Playlist Retrieval (Non-empty tracks)
 - [x] Audio Feature Persistence (Non-zero Energy/Valence)
+- [x] Async Worker Job Submission
+- [x] Background Feature Persistence (Update Logic)
