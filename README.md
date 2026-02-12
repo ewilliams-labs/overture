@@ -4,7 +4,7 @@ A high-performance, context-aware playlist orchestration engine.
 
 ## Project Roadmap & Status
 
-### Phase 1: Core Infrastructure & Ingestion (Current)
+### [x] Phase 1: Core Infrastructure & Ingestion (Current)
 
 - [x] Hexagonal Architecture Setup (Domain, Ports, Adapters)
 - [x] Spotify Auth (Client Credentials Flow)
@@ -13,25 +13,28 @@ A high-performance, context-aware playlist orchestration engine.
 - [x] Stabilize API Connectivity (Fix 503/Proxy issues)
 - [x] Implement Deterministic Vibe Fallback (Handle missing API data)
 
-### Phase 2: The Vibe Engine (Audio Analysis)
+### [x] Phase 2: Background Audio Processing & Persistence
 
 - [x] Implement GET /playlists/{id}/analysis endpoint
 - [x] Build Background Worker for Audio Processing
 	- (Worker pool deployed; currently using Deterministic Fallback for missing URLs)
+	- Implemented real-time RMS energy analysis via 'go-mp3'.
+	- Decoupled storage using Repository Factory pattern (SQLite/Postgres ready).
 - [ ] Integration: Go-Audio/FFmpeg for local BPM calculation
 - [ ] Strategy: "Real" analysis with Deterministic Fallback safety net
 
-### Phase 3: The Intent Engine (AI Integration)
+### [ ] Phase 3: The Intent Engine (AI Integration)
 
 - [ ] Integrate Ollama (Llama 3 / Mistral)
 - [ ] Prompt Engineering: "Natural Language -> Vibe Vector" translation
 - [ ] Generative UI: Frontend adapts to Vibe state
 
-## Architecture
+## Technical Architecture
 
 - **Backend:** Go 1.25+ (Hexagonal Architecture)
 - **Frontend:** React (Feature-Sliced Design)
 - **AI Engine:** Ollama / DeepSeek
+- **Storage Decoupling:** The system uses a Repository Factory. Local development defaults to SQLite. Production can be toggled to Postgres via the 'STORAGE_DRIVER' environment variable without changing business logic.
 
 ## Audio Features Reference
 
@@ -45,8 +48,7 @@ A high-performance, context-aware playlist orchestration engine.
 ## Getting Started
 
 - `just setup`: Install dependencies.
-- `just validate`: Run the full acceptance suite.
-- `just demo`: Run the end-to-end demo script.
+- `just validate`: Primary entry point for verifying the full ingestion and analysis pipeline.
 
 ## ✅ Acceptance Criteria Status
 
@@ -58,3 +60,6 @@ A high-performance, context-aware playlist orchestration engine.
 - [x] Audio Feature Persistence (Non-zero Energy/Valence)
 - [x] Async Worker Job Submission
 - [x] Background Feature Persistence (Update Logic)
+- [x] Background Worker Infrastructure (Async Job Pool)
+- [x] Automated Verification of Audio Persistence (Polling in tests)
+- [x] Deterministic Fallback for Missing Audio Metadata

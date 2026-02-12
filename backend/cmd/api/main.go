@@ -52,9 +52,7 @@ func main() {
 	default:
 		log.Fatalf("Unknown storage driver: %s", storageDriver)
 	}
-	if repoCloser != nil {
-		defer repoCloser()
-	}
+	defer repoCloser()
 
 	// -- Spotify Adapter
 	spotifyClient := spotify.NewClient(clientID, clientSecret)

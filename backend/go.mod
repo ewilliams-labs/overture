@@ -8,4 +8,4 @@ require (
 	golang.org/x/oauth2 v0.35.0
 )
 
-require github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
+require github.com/hajimehoshi/go-mp3 v0.3.4
