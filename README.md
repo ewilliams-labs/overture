@@ -17,15 +17,15 @@ A high-performance, context-aware playlist orchestration engine.
 
 - [x] Implement GET /playlists/{id}/analysis endpoint
 - [x] Build Background Worker for Audio Processing
-	- (Worker pool deployed; currently using Deterministic Fallback for missing URLs)
-	- Implemented real-time RMS energy analysis via 'go-mp3'.
-	- Decoupled storage using Repository Factory pattern (SQLite/Postgres ready).
+  - (Worker pool deployed; currently using Deterministic Fallback for missing URLs)
+  - Implemented real-time RMS energy analysis via 'go-mp3'.
+  - Decoupled storage using Repository Factory pattern (SQLite/Postgres ready).
 - [ ] Integration: Go-Audio/FFmpeg for local BPM calculation
 - [ ] Strategy: "Real" analysis with Deterministic Fallback safety net
 
-### [ ] Phase 3: The Intent Engine (AI Integration)
+### [x] Phase 3: AI Intent Engine (Ollama Integration)
 
-- [ ] Integrate Ollama (Llama 3 / Mistral)
+- [x] Infrastructure and Intent Schema (ADR 003) implemented. Reasoning-based parsing ready for DeepSeek-R1.
 - [ ] Prompt Engineering: "Natural Language -> Vibe Vector" translation
 - [ ] Generative UI: Frontend adapts to Vibe state
 
@@ -35,6 +35,10 @@ A high-performance, context-aware playlist orchestration engine.
 - **Frontend:** React (Feature-Sliced Design)
 - **AI Engine:** Ollama / DeepSeek
 - **Storage Decoupling:** The system uses a Repository Factory. Local development defaults to SQLite. Production can be toggled to Postgres via the 'STORAGE_DRIVER' environment variable without changing business logic.
+
+## Local AI Requirements
+
+- To enable the Intent Engine, ensure Ollama is running with the 'deepseek-r1:8b' model: `ollama run deepseek-r1:8b`.
 
 ## Audio Features Reference
 
@@ -63,3 +67,4 @@ A high-performance, context-aware playlist orchestration engine.
 - [x] Background Worker Infrastructure (Async Job Pool)
 - [x] Automated Verification of Audio Persistence (Polling in tests)
 - [x] Deterministic Fallback for Missing Audio Metadata
+- [x] Natural Language Intent Parsing (Infrastructure)

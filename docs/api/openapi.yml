@@ -1,0 +1,276 @@
+openapi: 3.0.3
+info:
+  title: Overture API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+  /playlists:
+    post:
+      summary: Create a playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaylistRequest"
+      responses:
+        "201":
+          description: Playlist created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /playlists/{id}:
+    get:
+      summary: Get a playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Playlist response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "404":
+          description: Playlist not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /playlists/{id}/tracks:
+    post:
+      summary: Add a track to a playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTrackRequest"
+      responses:
+        "201":
+          description: Track added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddTrackResponse"
+        "422":
+          description: No confident match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /playlists/{id}/analysis:
+    get:
+      summary: Get playlist analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audio features
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioFeatures"
+        "404":
+          description: Playlist not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /playlists/{id}/intent:
+    post:
+      summary: Analyze playlist intent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeIntentRequest"
+      responses:
+        "200":
+          description: Intent object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntentObject"
+        "501":
+          description: Intent compiler not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+    CreatePlaylistRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    AddTrackRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+      required:
+        - title
+        - artist
+    AddTrackResponse:
+      type: object
+      properties:
+        id:
+          type: string
+    Playlist:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Track"
+    Track:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        isrc:
+          type: string
+        preview_url:
+          type: string
+        features:
+          $ref: "#/components/schemas/AudioFeatures"
+    AudioFeatures:
+      type: object
+      properties:
+        danceability:
+          type: number
+        energy:
+          type: number
+        valence:
+          type: number
+        tempo:
+          type: number
+        instrumentalness:
+          type: number
+        acousticness:
+          type: number
+    AnalyzeIntentRequest:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+    VibeConstraint:
+      type: object
+      properties:
+        target:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
+        weight:
+          type: string
+    IntentEntities:
+      type: object
+      properties:
+        artists:
+          type: array
+          items:
+            type: string
+        genres:
+          type: array
+          items:
+            type: string
+    VibeConstraints:
+      type: object
+      properties:
+        energy:
+          $ref: "#/components/schemas/VibeConstraint"
+        valence:
+          $ref: "#/components/schemas/VibeConstraint"
+        acousticness:
+          $ref: "#/components/schemas/VibeConstraint"
+        instrumentalness:
+          $ref: "#/components/schemas/VibeConstraint"
+    IntentSequence:
+      type: object
+      properties:
+        pattern:
+          type: string
+        description:
+          type: string
+    IntentObject:
+      type: object
+      properties:
+        intent_type:
+          type: string
+        entities:
+          $ref: "#/components/schemas/IntentEntities"
+        vibe_constraints:
+          $ref: "#/components/schemas/VibeConstraints"
+        sequence:
+          $ref: "#/components/schemas/IntentSequence"
+        explanation:
+          type: string
