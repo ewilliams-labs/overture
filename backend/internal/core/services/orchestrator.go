@@ -3,6 +3,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
@@ -28,7 +29,7 @@ func NewOrchestrator(spotify ports.SpotifyProvider, repo ports.PlaylistRepositor
 // It returns the playlist ID on success.
 func (o *Orchestrator) AddTrackToPlaylist(ctx context.Context, playlistID string, title string, artist string) (string, error) {
 	// 1. Fetch track metadata from Spotify
-	track, err := o.spotify.GetTrackByMetadata(ctx, title, artist)
+	track, err := o.spotify.GetTrack(ctx, title, artist)
 	if err != nil {
 		return "", fmt.Errorf("service: failed to fetch track: %w", err)
 	}
@@ -92,10 +93,13 @@ func (o *Orchestrator) GetPlaylist(ctx context.Context, playlistID string) (doma
 
 // GetPlaylistAnalysis loads a playlist and returns its analyzed audio features.
 func (o *Orchestrator) GetPlaylistAnalysis(ctx context.Context, id string) (domain.AudioFeatures, error) {
-	playlist, err := o.repo.GetByID(ctx, id)
+	features, err := o.repo.GetPlaylistAudioFeatures(ctx, id)
 	if err != nil {
-		return domain.AudioFeatures{}, fmt.Errorf("service: failed to load playlist: %w", err)
+		if errors.Is(err, domain.ErrNotFound) {
+			return domain.AudioFeatures{}, err
+		}
+		return domain.AudioFeatures{}, fmt.Errorf("service: failed to load playlist analysis: %w", err)
 	}
 
-	return playlist.Analyze(), nil
+	return features, nil
 }

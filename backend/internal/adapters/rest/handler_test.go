@@ -39,6 +39,10 @@ func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist stri
 	return domain.Track{ID: "t1", Title: title, Artist: artist}, nil
 }
 
+func (m *mockSpotify) GetTrack(ctx context.Context, title, artist string) (domain.Track, error) {
+	return m.GetTrackByMetadata(ctx, title, artist)
+}
+
 func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackID string) (domain.Playlist, error) {
 	return domain.Playlist{}, nil
 }
@@ -47,6 +51,8 @@ type mockRepo struct {
 	shouldFailSave bool
 	getErr         error
 	playlist       domain.Playlist
+	audioErr       error
+	features       domain.AudioFeatures
 }
 
 func (m *mockRepo) GetByID(ctx context.Context, id string) (domain.Playlist, error) {
@@ -64,6 +70,13 @@ func (m *mockRepo) Save(ctx context.Context, p domain.Playlist) error {
 		return errors.New("db error")
 	}
 	return nil
+}
+
+func (m *mockRepo) GetPlaylistAudioFeatures(ctx context.Context, playlistID string) (domain.AudioFeatures, error) {
+	if m.audioErr != nil {
+		return domain.AudioFeatures{}, m.audioErr
+	}
+	return m.features, nil
 }
 
 // --- Tests ---
@@ -250,6 +263,14 @@ func TestHandler_GetPlaylist(t *testing.T) {
 			useRouter:      true,
 		},
 		{
+			name:           "Not Found: missing playlist",
+			playlistID:     "pl-404",
+			mockGetErr:     domain.ErrNotFound,
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   domain.ErrNotFound.Error(),
+			useRouter:      true,
+		},
+		{
 			name:           "Success: returns playlist",
 			playlistID:     "pl-2",
 			mockGetErr:     nil,
@@ -295,7 +316,7 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 		name           string
 		playlistID     string
 		mockGetErr     error
-		playlist       domain.Playlist
+		features       domain.AudioFeatures
 		expectedStatus int
 		expectedBody   string
 		useRouter      bool
@@ -309,43 +330,31 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 			useRouter:      false,
 		},
 		{
+			name:           "Not Found: missing playlist",
+			playlistID:     "pl-404",
+			mockGetErr:     domain.ErrNotFound,
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   domain.ErrNotFound.Error(),
+			useRouter:      true,
+		},
+		{
 			name:           "Server Error: repo get fails",
 			playlistID:     "pl-1",
 			mockGetErr:     errors.New("get failed"),
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   "service: failed to load playlist",
+			expectedBody:   "service: failed to load playlist analysis",
 			useRouter:      true,
 		},
 		{
 			name:       "Success: returns analysis",
 			playlistID: "pl-2",
-			playlist: domain.Playlist{
-				ID:   "pl-2",
-				Name: "Test Playlist",
-				Tracks: []domain.Track{
-					{
-						ID: "t1",
-						Features: domain.AudioFeatures{
-							Danceability:     0.25,
-							Energy:           0.25,
-							Valence:          0.25,
-							Tempo:            100,
-							Instrumentalness: 0.0,
-							Acousticness:     0.0,
-						},
-					},
-					{
-						ID: "t2",
-						Features: domain.AudioFeatures{
-							Danceability:     0.75,
-							Energy:           0.75,
-							Valence:          0.75,
-							Tempo:            120,
-							Instrumentalness: 1.0,
-							Acousticness:     1.0,
-						},
-					},
-				},
+			features: domain.AudioFeatures{
+				Danceability:     0.5,
+				Energy:           0.5,
+				Valence:          0.5,
+				Tempo:            110,
+				Instrumentalness: 0.5,
+				Acousticness:     0.5,
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "\"danceability\":0.5",
@@ -355,7 +364,7 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := &mockRepo{getErr: tt.mockGetErr, playlist: tt.playlist}
+			repo := &mockRepo{audioErr: tt.mockGetErr, features: tt.features}
 			svc := services.NewOrchestrator(&mockSpotify{}, repo)
 			h := NewHandler(svc)
 

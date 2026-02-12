@@ -10,12 +10,12 @@ A high-performance, context-aware playlist orchestration engine.
 - [x] Spotify Auth (Client Credentials Flow)
 - [x] Playlist Management (Create, Store, Retrieve)
 - [x] Pivot: Metadata Search (Title/Artist) replacing ISRC
-- [ ] Stabilize API Connectivity (Fix 503/Proxy issues)
-- [ ] Implement Deterministic Vibe Fallback (Handle missing API data)
+- [x] Stabilize API Connectivity (Fix 503/Proxy issues)
+- [x] Implement Deterministic Vibe Fallback (Handle missing API data)
 
 ### Phase 2: The Vibe Engine (Audio Analysis)
 
-- [ ] Implement GET /playlists/{id}/analysis endpoint
+- [x] Implement GET /playlists/{id}/analysis endpoint
 - [ ] Build Background Worker for Audio Processing
 - [ ] Integration: Go-Audio/FFmpeg for local BPM calculation
 - [ ] Strategy: "Real" analysis with Deterministic Fallback safety net
@@ -40,3 +40,18 @@ A high-performance, context-aware playlist orchestration engine.
 - **Acousticness (0.0 - 1.0):** A confidence measure of whether the track is acoustic (1.0) versus electronic/amplified (0.0).
 - **Instrumentalness (0.0 - 1.0):** Predicts whether a track contains no vocals. Values above 0.5 are intended to represent instrumental tracks.
 - **Tempo (BPM):** The overall estimated tempo of a track in beats per minute.
+
+## Getting Started
+
+- `just setup`: Install dependencies.
+- `just validate`: Run the full acceptance suite.
+- `just demo`: Run the end-to-end demo script.
+
+## ✅ Acceptance Criteria Status
+
+- [x] Health Check (200 OK)
+- [x] Valid Track Addition (Title/Artist Search)
+- [x] Fuzzy Match Validation
+- [x] Fail on Low Confidence (422 Unprocessable Entity)
+- [x] Playlist Retrieval (Non-empty tracks)
+- [x] Audio Feature Persistence (Non-zero Energy/Valence)

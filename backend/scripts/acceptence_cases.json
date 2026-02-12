@@ -9,15 +9,31 @@
     "id": "valid-track-addition",
     "method": "POST",
     "path": "/playlists/{{playlist_id}}/tracks",
-    "payload": { "title": "Solaris", "artist": "Carbon Based Lifeforms" },
+    "payload": { "title": "Blinding Lights", "artist": "The Weeknd" },
     "expected_status": 201
   },
   {
     "id": "fuzzy-match-validation",
     "method": "POST",
     "path": "/playlists/{{playlist_id}}/tracks",
-    "payload": { "title": "Solaris - Remastered", "artist": "Carbon Based Lifeforms" },
+    "payload": { "title": "Blinding Lights - Remastered 2020", "artist": "The Weeknd" },
     "expected_status": 201
+  },
+  {
+    "id": "get-playlist-with-tracks",
+    "method": "GET",
+    "path": "/playlists/{{playlist_id}}",
+    "expected_status": 200,
+    "expected_json_path": ".tracks | length",
+    "expected_json_min": 1
+  },
+  {
+    "id": "get-playlist-analysis",
+    "method": "GET",
+    "path": "/playlists/{{playlist_id}}/analysis",
+    "expected_status": 200,
+    "expected_json_path": ".danceability",
+    "expected_json_min": 0
   },
   {
     "id": "fail-on-low-confidence",
@@ -25,5 +41,12 @@
     "path": "/playlists/{{playlist_id}}/tracks",
     "payload": { "title": "A Very Obscure Song That Doesnt Exist", "artist": "No One" },
     "expected_status": 422
+  },
+  {
+    "id": "missing-playlist-returns-404",
+    "method": "GET",
+    "path": "/playlists/does-not-exist",
+    "expected_status": 404,
+    "expected_body_contains": "domain: not found"
   }
 ]

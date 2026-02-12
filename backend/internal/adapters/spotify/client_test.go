@@ -193,12 +193,13 @@ func TestGetTrackByMetadata(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:       "not found (empty items list)",
-			title:      "Missing Track",
-			artist:     "Missing Artist",
-			statusCode: http.StatusOK,
-			response:   `{ "tracks": { "items": [] } }`,
-			expectErr:  true,
+			name:        "not found (empty items list)",
+			title:       "Missing Track",
+			artist:      "Missing Artist",
+			statusCode:  http.StatusOK,
+			response:    `{ "tracks": { "items": [] } }`,
+			expectErr:   true,
+			expectErrIs: ports.ErrNoConfidentMatch,
 		},
 		{
 			name:       "top result does not match",
@@ -471,6 +472,44 @@ func TestGetTrack(t *testing.T) {
 			},
 			wantFeatures: deterministicFeatures("track-3"),
 		},
+		{
+			name:         "empty energy falls back to deterministic",
+			title:        "Empty Energy",
+			artist:       "Test Artist",
+			searchStatus: http.StatusOK,
+			searchBody: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "track-4",
+							"name": "Empty Energy",
+							"duration_ms": 160000,
+							"artists": [ { "name": "Test Artist" } ],
+							"album": { "name": "Test Album", "images": [] }
+						}
+					]
+				}
+			}`,
+			featuresStatus: http.StatusOK,
+			featuresBody: `{
+				"danceability": 0.5,
+				"energy": 0.0,
+				"valence": 0.4,
+				"tempo": 110,
+				"instrumentalness": 0.2,
+				"acousticness": 0.3
+			}`,
+			expectErr: false,
+			want: domain.Track{
+				ID:         "track-4",
+				Title:      "Empty Energy",
+				Artist:     "Test Artist",
+				Album:      "Test Album",
+				DurationMs: 160000,
+				ISRC:       "",
+			},
+			wantFeatures: deterministicFeatures("track-4"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -501,6 +540,10 @@ func TestGetTrack(t *testing.T) {
 					w.WriteHeader(tt.featuresStatus)
 					w.Write([]byte(tt.featuresBody))
 				case r.URL.Path == "/audio-features/track-3":
+					featuresCalled = true
+					w.WriteHeader(tt.featuresStatus)
+					w.Write([]byte(tt.featuresBody))
+				case r.URL.Path == "/audio-features/track-4":
 					featuresCalled = true
 					w.WriteHeader(tt.featuresStatus)
 					w.Write([]byte(tt.featuresBody))

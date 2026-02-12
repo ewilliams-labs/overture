@@ -1,3 +1,4 @@
+// Package sqlite provides a SQLite-backed implementation of the repository port.
 package sqlite
 
 import (
@@ -43,7 +44,110 @@ func (a *Adapter) Close() error {
 }
 
 func (a *Adapter) GetByID(ictx context.Context, id string) (domain.Playlist, error) {
-	return domain.Playlist{}, nil
+	row := a.db.QueryRowContext(ictx, "SELECT id, name FROM playlists WHERE id = ?", id)
+	var playlist domain.Playlist
+	if err := row.Scan(&playlist.ID, &playlist.Name); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.Playlist{}, domain.ErrNotFound
+		}
+		return domain.Playlist{}, fmt.Errorf("failed to load playlist: %w", err)
+	}
+	playlist.Tracks = []domain.Track{}
+
+	trackRows, err := a.db.QueryContext(ictx, `
+		SELECT t.id, t.title, t.artist, t.album, t.duration_ms, t.isrc, t.cover_url,
+			IFNULL(t.danceability, 0), IFNULL(t.energy, 0), IFNULL(t.valence, 0),
+			IFNULL(t.tempo, 0), IFNULL(t.instrumentalness, 0), IFNULL(t.acousticness, 0)
+		FROM tracks t
+		JOIN playlist_tracks pt ON pt.track_id = t.id
+		WHERE pt.playlist_id = ?
+		ORDER BY pt.added_at ASC
+	`, playlist.ID)
+	if err != nil {
+		return domain.Playlist{}, fmt.Errorf("failed to load playlist tracks: %w", err)
+	}
+	defer trackRows.Close()
+
+	for trackRows.Next() {
+		var track domain.Track
+		var album sql.NullString
+		var isrc sql.NullString
+		var coverURL sql.NullString
+		var duration sql.NullInt64
+		if err := trackRows.Scan(
+			&track.ID,
+			&track.Title,
+			&track.Artist,
+			&album,
+			&duration,
+			&isrc,
+			&coverURL,
+			&track.Features.Danceability,
+			&track.Features.Energy,
+			&track.Features.Valence,
+			&track.Features.Tempo,
+			&track.Features.Instrumentalness,
+			&track.Features.Acousticness,
+		); err != nil {
+			return domain.Playlist{}, fmt.Errorf("failed to scan playlist track: %w", err)
+		}
+		if album.Valid {
+			track.Album = album.String
+		}
+		if duration.Valid {
+			track.DurationMs = int(duration.Int64)
+		}
+		if isrc.Valid {
+			track.ISRC = isrc.String
+		}
+		if coverURL.Valid {
+			track.CoverURL = coverURL.String
+		}
+		playlist.Tracks = append(playlist.Tracks, track)
+	}
+	if err := trackRows.Err(); err != nil {
+		return domain.Playlist{}, fmt.Errorf("failed to iterate playlist tracks: %w", err)
+	}
+
+	return playlist, nil
+}
+
+func (a *Adapter) GetPlaylistAudioFeatures(ctx context.Context, playlistID string) (domain.AudioFeatures, error) {
+	row := a.db.QueryRowContext(ctx, "SELECT id FROM playlists WHERE id = ?", playlistID)
+	var id string
+	if err := row.Scan(&id); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.AudioFeatures{}, domain.ErrNotFound
+		}
+		return domain.AudioFeatures{}, fmt.Errorf("failed to load playlist: %w", err)
+	}
+
+	query := `
+		SELECT
+			COALESCE(AVG(t.danceability), 0),
+			COALESCE(AVG(t.energy), 0),
+			COALESCE(AVG(t.valence), 0),
+			COALESCE(AVG(t.tempo), 0),
+			COALESCE(AVG(t.instrumentalness), 0),
+			COALESCE(AVG(t.acousticness), 0)
+		FROM tracks t
+		JOIN playlist_tracks pt ON pt.track_id = t.id
+		WHERE pt.playlist_id = ?
+	`
+
+	var features domain.AudioFeatures
+	if err := a.db.QueryRowContext(ctx, query, playlistID).Scan(
+		&features.Danceability,
+		&features.Energy,
+		&features.Valence,
+		&features.Tempo,
+		&features.Instrumentalness,
+		&features.Acousticness,
+	); err != nil {
+		return domain.AudioFeatures{}, fmt.Errorf("failed to load playlist audio features: %w", err)
+	}
+
+	return features, nil
 }
 
 func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
@@ -72,16 +176,35 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 	// 4. Upsert Tracks & Re-link
 	// Prepare statements once for performance
 	stmtTrack, err := tx.PrepareContext(ctx, `
-		INSERT INTO tracks (id, title, artist, album, duration_ms, isrc, cover_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO NOTHING;
+		INSERT INTO tracks (
+			id, title, artist, album, duration_ms, isrc, cover_url,
+			danceability, energy, valence, tempo, instrumentalness, acousticness
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			title=excluded.title,
+			artist=excluded.artist,
+			album=excluded.album,
+			duration_ms=excluded.duration_ms,
+			isrc=excluded.isrc,
+			cover_url=excluded.cover_url,
+			danceability=excluded.danceability,
+			energy=excluded.energy,
+			valence=excluded.valence,
+			tempo=excluded.tempo,
+			instrumentalness=excluded.instrumentalness,
+			acousticness=excluded.acousticness;
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmtTrack.Close()
 
-	stmtLink, err := tx.PrepareContext(ctx, `INSERT INTO playlist_tracks (playlist_id, track_id) VALUES (?, ?)`)
+	stmtLink, err := tx.PrepareContext(ctx, `
+		INSERT INTO playlist_tracks (playlist_id, track_id)
+		VALUES (?, ?)
+		ON CONFLICT(playlist_id, track_id) DO NOTHING
+	`)
 	if err != nil {
 		return err
 	}
@@ -89,7 +212,22 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 
 	for _, t := range p.Tracks {
 		// Ensure track exists in the global 'tracks' table
-		if _, err := stmtTrack.ExecContext(ctx, t.ID, t.Title, t.Artist, t.Album, t.DurationMs, t.ISRC, t.CoverURL); err != nil {
+		if _, err := stmtTrack.ExecContext(
+			ctx,
+			t.ID,
+			t.Title,
+			t.Artist,
+			t.Album,
+			t.DurationMs,
+			t.ISRC,
+			t.CoverURL,
+			t.Features.Danceability,
+			t.Features.Energy,
+			t.Features.Valence,
+			t.Features.Tempo,
+			t.Features.Instrumentalness,
+			t.Features.Acousticness,
+		); err != nil {
 			return fmt.Errorf("failed to save track %s: %w", t.ID, err)
 		}
 		// Create the link in 'playlist_tracks'
@@ -116,6 +254,12 @@ func (a *Adapter) migrate() error {
 		duration_ms INTEGER,
 		isrc TEXT,
 		cover_url TEXT,
+		danceability REAL,
+		energy REAL,
+		valence REAL,
+		tempo REAL,
+		instrumentalness REAL,
+		acousticness REAL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -139,7 +283,37 @@ func (a *Adapter) migrate() error {
 	}
 
 	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN cover_url TEXT"); err != nil {
-		if err != nil && !isDuplicateColumnError(err) {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN danceability REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN energy REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN valence REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN tempo REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN instrumentalness REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN acousticness REAL"); err != nil {
+		if !isDuplicateColumnError(err) {
 			return err
 		}
 	}

@@ -44,6 +44,11 @@ func (c *Client) GetTrack(ctx context.Context, title string, artist string) (dom
 	if err := json.NewDecoder(featuresResp.Body).Decode(&features); err != nil {
 		return domain.Track{}, fmt.Errorf("spotify adapter: features decode error: %w", err)
 	}
+	if features.Energy <= 0.001 {
+		log.Printf("WARN spotify adapter: Spotify returned empty features. Triggering deterministic fallback.")
+		mapped.Features = generateDeterministicFeatures(track.ID)
+		return mapped, nil
+	}
 
 	if allFeaturesZero(features) {
 		log.Printf("WARN spotify adapter: falling back to deterministic vibe generation for track %s", track.ID)

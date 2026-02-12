@@ -2,7 +2,10 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 )
 
 type createPlaylistRequest struct {
@@ -50,6 +53,10 @@ func (h *Handler) GetPlaylist(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusNotFound, domain.ErrNotFound.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -67,6 +74,10 @@ func (h *Handler) GetPlaylistAnalysis(w http.ResponseWriter, r *http.Request) {
 
 	features, err := h.svc.GetPlaylistAnalysis(r.Context(), playlistID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusNotFound, domain.ErrNotFound.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

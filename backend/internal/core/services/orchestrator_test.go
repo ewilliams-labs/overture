@@ -153,6 +153,15 @@ func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist stri
 	return m.track, nil
 }
 
+func (m *mockSpotify) GetTrack(ctx context.Context, title, artist string) (domain.Track, error) {
+	m.calledTitle = title
+	m.calledArtist = artist
+	if m.err != nil {
+		return domain.Track{}, m.err
+	}
+	return m.track, nil
+}
+
 // AddTrackToPlaylist stub to satisfy ports.SpotifyProvider interface.
 // Even if the Orchestrator doesn't call it, the interface requires it.
 func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackID string) (domain.Playlist, error) {
@@ -164,9 +173,13 @@ type mockRepo struct {
 	getErr   error
 	saveErr  error
 	playlist domain.Playlist
+	audioErr error
+	features domain.AudioFeatures
 
-	called   bool
-	calledID string
+	called        bool
+	calledID      string
+	calledAudio   bool
+	calledAudioID string
 
 	saved *domain.Playlist // captured saved playlist (pointer for test inspection)
 }
@@ -191,6 +204,15 @@ func (m *mockRepo) Save(ctx context.Context, p domain.Playlist) error {
 	// capture saved playlist (store address for inspection)
 	m.saved = &p
 	return nil
+}
+
+func (m *mockRepo) GetPlaylistAudioFeatures(ctx context.Context, playlistID string) (domain.AudioFeatures, error) {
+	m.calledAudio = true
+	m.calledAudioID = playlistID
+	if m.audioErr != nil {
+		return domain.AudioFeatures{}, m.audioErr
+	}
+	return m.features, nil
 }
 
 func TestOrchestrator_CreatePlaylist(t *testing.T) {
@@ -317,7 +339,7 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 		name        string
 		playlistID  string
 		mockGetErr  error
-		playlist    domain.Playlist
+		features    domain.AudioFeatures
 		wantErr     bool
 		expected    domain.AudioFeatures
 		wantCalled  bool
@@ -333,33 +355,13 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 		{
 			name:       "Success: returns analyzed features",
 			playlistID: "pl-2",
-			playlist: domain.Playlist{
-				ID:   "pl-2",
-				Name: "Test Playlist",
-				Tracks: []domain.Track{
-					{
-						ID: "t1",
-						Features: domain.AudioFeatures{
-							Danceability:     0.2,
-							Energy:           0.4,
-							Valence:          0.6,
-							Tempo:            100,
-							Instrumentalness: 0.1,
-							Acousticness:     0.3,
-						},
-					},
-					{
-						ID: "t2",
-						Features: domain.AudioFeatures{
-							Danceability:     0.6,
-							Energy:           0.8,
-							Valence:          0.2,
-							Tempo:            120,
-							Instrumentalness: 0.3,
-							Acousticness:     0.5,
-						},
-					},
-				},
+			features: domain.AudioFeatures{
+				Danceability:     0.4,
+				Energy:           0.6,
+				Valence:          0.4,
+				Tempo:            110,
+				Instrumentalness: 0.2,
+				Acousticness:     0.4,
 			},
 			wantErr:     false,
 			wantCalled:  true,
@@ -377,7 +379,7 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mockRepo := &mockRepo{getErr: tc.mockGetErr, playlist: tc.playlist}
+			mockRepo := &mockRepo{audioErr: tc.mockGetErr, features: tc.features}
 			mockSpotify := &mockSpotify{}
 
 			o := NewOrchestrator(mockSpotify, mockRepo)
@@ -388,12 +390,12 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 				t.Fatalf("GetPlaylistAnalysis() error = %v, wantErr %v", err, tc.wantErr)
 			}
 
-			if mockRepo.called != tc.wantCalled {
-				t.Fatalf("GetByID() called = %v, wantCalled %v", mockRepo.called, tc.wantCalled)
+			if mockRepo.calledAudio != tc.wantCalled {
+				t.Fatalf("GetPlaylistAudioFeatures() called = %v, wantCalled %v", mockRepo.calledAudio, tc.wantCalled)
 			}
 
-			if tc.wantIDMatch && mockRepo.calledID != tc.playlistID {
-				t.Fatalf("expected called ID %q, got %q", tc.playlistID, mockRepo.calledID)
+			if tc.wantIDMatch && mockRepo.calledAudioID != tc.playlistID {
+				t.Fatalf("expected called ID %q, got %q", tc.playlistID, mockRepo.calledAudioID)
 			}
 
 			if !tc.wantErr && !featuresEqual(features, tc.expected, 1e-9) {

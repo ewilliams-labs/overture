@@ -5,6 +5,9 @@ import "errors"
 // ErrDuplicateISRC is returned when attempting to add a track with a duplicate ISRC to a playlist.
 var ErrDuplicateISRC = errors.New("domain: duplicate ISRC")
 
+// ErrNotFound is returned when a requested entity does not exist.
+var ErrNotFound = errors.New("domain: not found")
+
 // Playlist represents a collection of tracks.
 type Playlist struct {
 	ID     string  `json:"id"`

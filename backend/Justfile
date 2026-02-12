@@ -1,8 +1,40 @@
 set shell := ["bash", "-cu"]
 set dotenv-load := true
 
-run:
-	go run cmd/api/main.go
+start:
+    go run cmd/api/main.go
+
+setup:
+    go mod tidy
+    chmod +x scripts/demo_flow.sh
+
+clean:
+    rm -f .last_playlist_id overture.db
+
+demo-create:
+    chmod +x scripts/demo_flow.sh
+    ./scripts/demo_flow.sh create-playlist "Demo Vibes"
+
+demo-add:
+    chmod +x scripts/demo_flow.sh
+    ./scripts/demo_flow.sh add-track "Blinding Lights" "The Weeknd"
+
+demo: demo-create demo-add
+
+stop:
+    @set -euo pipefail; \
+    if command -v lsof >/dev/null 2>&1; then \
+        pid=$(lsof -ti tcp:8080 2>/dev/null || true); \
+    elif command -v fuser >/dev/null 2>&1; then \
+        pid=$(fuser -n tcp 8080 2>/dev/null || true); \
+    else \
+        pid=""; \
+    fi; \
+    if [ -n "$pid" ]; then \
+        kill $pid 2>/dev/null || true; \
+    fi
+
+run: start
 
 tidy:
 	go mod tidy
@@ -11,9 +43,21 @@ test:
 	go test ./...
 
 # Run full integration suite against a running server
-validate-acceptance:
-    chmod +x ./scripts/validate_api.sh
-    ./scripts/validate_api.sh
+validate:
+    @set -euo pipefail; \
+    just clean >/dev/null 2>&1 || true; \
+    go run cmd/api/main.go > /tmp/overture-validate.log 2>&1 & PID=$!; \
+    trap 'just clean >/dev/null 2>&1 || true; kill "$PID" 2>/dev/null || true; if command -v lsof >/dev/null 2>&1; then pid=$(lsof -ti tcp:8080 2>/dev/null || true); elif command -v fuser >/dev/null 2>&1; then pid=$(fuser -n tcp 8080 2>/dev/null || true); fi; [ -n "$pid" ] && kill $pid 2>/dev/null || true' EXIT; \
+    ready=""; \
+    for _ in $(seq 1 30); do \
+        status=$(curl -s --connect-timeout 1 --max-time 2 -o /dev/null -w "%{http_code}" http://localhost:8080/health || true); \
+        if [ "$status" = "200" ]; then ready="yes"; break; fi; \
+        sleep 0.5; \
+    done; \
+    if [ -z "$ready" ]; then echo "Server did not become ready" >&2; exit 1; fi; \
+    bash ./scripts/validate-acceptance.sh; \
+    chmod +x scripts/demo_flow.sh; \
+    just demo
 
 # Complete CI pipeline: build, run, validate, kill
 ci-check:

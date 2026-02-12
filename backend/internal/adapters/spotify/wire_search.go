@@ -68,7 +68,7 @@ func (c *Client) searchTrack(ctx context.Context, title string, artist string) (
 	}
 
 	if len(searchBody.Tracks.Items) == 0 {
-		return spotifyTrack{}, fmt.Errorf("spotify adapter: no track found for title %q artist %q", title, artist)
+		return spotifyTrack{}, fmt.Errorf("spotify adapter: %w", &ports.NoConfidentMatchError{Title: title, Artist: artist})
 	}
 
 	maxItems := len(searchBody.Tracks.Items)
