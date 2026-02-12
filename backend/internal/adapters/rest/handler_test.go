@@ -79,6 +79,10 @@ func (m *mockRepo) GetPlaylistAudioFeatures(ctx context.Context, playlistID stri
 	return m.features, nil
 }
 
+func (m *mockRepo) UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error {
+	return nil
+}
+
 // --- Tests ---
 
 func TestHandler_AddTrack(t *testing.T) {
@@ -141,7 +145,7 @@ func TestHandler_AddTrack(t *testing.T) {
 			svc := services.NewOrchestrator(spotify, repo)
 
 			// 2. Setup Handler
-			h := NewHandler(svc)
+			h := NewHandler(svc, nil)
 
 			// 3. Create Request
 			jsonBody, _ := json.Marshal(tt.body)
@@ -207,7 +211,7 @@ func TestHandler_CreatePlaylist(t *testing.T) {
 			// 1. Setup
 			repo := &mockRepo{shouldFailSave: tc.mockRepoFail}
 			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc)
+			h := NewHandler(svc, nil)
 
 			// 2. Request
 			var bodyBytes []byte
@@ -284,7 +288,7 @@ func TestHandler_GetPlaylist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockRepo{getErr: tt.mockGetErr}
 			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc)
+			h := NewHandler(svc, nil)
 
 			var req *http.Request
 			if tt.useRouter {
@@ -366,7 +370,7 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockRepo{audioErr: tt.mockGetErr, features: tt.features}
 			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc)
+			h := NewHandler(svc, nil)
 
 			var req *http.Request
 			if tt.useRouter {

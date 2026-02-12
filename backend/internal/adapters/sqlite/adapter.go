@@ -55,7 +55,7 @@ func (a *Adapter) GetByID(ictx context.Context, id string) (domain.Playlist, err
 	playlist.Tracks = []domain.Track{}
 
 	trackRows, err := a.db.QueryContext(ictx, `
-		SELECT t.id, t.title, t.artist, t.album, t.duration_ms, t.isrc, t.cover_url,
+		SELECT t.id, t.title, t.artist, t.album, t.duration_ms, t.isrc, t.cover_url, t.preview_url,
 			IFNULL(t.danceability, 0), IFNULL(t.energy, 0), IFNULL(t.valence, 0),
 			IFNULL(t.tempo, 0), IFNULL(t.instrumentalness, 0), IFNULL(t.acousticness, 0)
 		FROM tracks t
@@ -73,6 +73,7 @@ func (a *Adapter) GetByID(ictx context.Context, id string) (domain.Playlist, err
 		var album sql.NullString
 		var isrc sql.NullString
 		var coverURL sql.NullString
+		var previewURL sql.NullString
 		var duration sql.NullInt64
 		if err := trackRows.Scan(
 			&track.ID,
@@ -82,6 +83,7 @@ func (a *Adapter) GetByID(ictx context.Context, id string) (domain.Playlist, err
 			&duration,
 			&isrc,
 			&coverURL,
+			&previewURL,
 			&track.Features.Danceability,
 			&track.Features.Energy,
 			&track.Features.Valence,
@@ -102,6 +104,9 @@ func (a *Adapter) GetByID(ictx context.Context, id string) (domain.Playlist, err
 		}
 		if coverURL.Valid {
 			track.CoverURL = coverURL.String
+		}
+		if previewURL.Valid {
+			track.PreviewURL = previewURL.String
 		}
 		playlist.Tracks = append(playlist.Tracks, track)
 	}
@@ -150,6 +155,35 @@ func (a *Adapter) GetPlaylistAudioFeatures(ctx context.Context, playlistID strin
 	return features, nil
 }
 
+func (a *Adapter) UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error {
+	query := `
+		UPDATE tracks
+		SET
+			danceability = ?,
+			energy = ?,
+			valence = ?,
+			tempo = ?,
+			instrumentalness = ?,
+			acousticness = ?
+		WHERE id = ?
+	`
+	if _, err := a.db.ExecContext(
+		ctx,
+		query,
+		features.Danceability,
+		features.Energy,
+		features.Valence,
+		features.Tempo,
+		features.Instrumentalness,
+		features.Acousticness,
+		trackID,
+	); err != nil {
+		return fmt.Errorf("failed to update track features: %w", err)
+	}
+
+	return nil
+}
+
 func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 	// 1. Start Transaction
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -177,10 +211,10 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 	// Prepare statements once for performance
 	stmtTrack, err := tx.PrepareContext(ctx, `
 		INSERT INTO tracks (
-			id, title, artist, album, duration_ms, isrc, cover_url,
+			id, title, artist, album, duration_ms, isrc, cover_url, preview_url,
 			danceability, energy, valence, tempo, instrumentalness, acousticness
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			artist=excluded.artist,
@@ -188,6 +222,7 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 			duration_ms=excluded.duration_ms,
 			isrc=excluded.isrc,
 			cover_url=excluded.cover_url,
+			preview_url=excluded.preview_url,
 			danceability=excluded.danceability,
 			energy=excluded.energy,
 			valence=excluded.valence,
@@ -221,6 +256,7 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 			t.DurationMs,
 			t.ISRC,
 			t.CoverURL,
+			t.PreviewURL,
 			t.Features.Danceability,
 			t.Features.Energy,
 			t.Features.Valence,
@@ -254,6 +290,7 @@ func (a *Adapter) migrate() error {
 		duration_ms INTEGER,
 		isrc TEXT,
 		cover_url TEXT,
+		preview_url TEXT,
 		danceability REAL,
 		energy REAL,
 		valence REAL,
@@ -283,6 +320,11 @@ func (a *Adapter) migrate() error {
 	}
 
 	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN cover_url TEXT"); err != nil {
+		if !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	if _, err := a.db.Exec("ALTER TABLE tracks ADD COLUMN preview_url TEXT"); err != nil {
 		if !isDuplicateColumnError(err) {
 			return err
 		}

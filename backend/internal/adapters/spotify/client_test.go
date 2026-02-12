@@ -29,6 +29,12 @@ func compareTracks(t *testing.T, got, want domain.Track) {
 	if got.Artist != want.Artist {
 		t.Errorf("Artist: got %v, want %v", got.Artist, want.Artist)
 	}
+	if got.CoverURL != want.CoverURL {
+		t.Errorf("CoverURL: got %v, want %v", got.CoverURL, want.CoverURL)
+	}
+	if got.PreviewURL != want.PreviewURL {
+		t.Errorf("PreviewURL: got %v, want %v", got.PreviewURL, want.PreviewURL)
+	}
 	if got.ISRC != want.ISRC {
 		t.Errorf("ISRC: got %v, want %v", got.ISRC, want.ISRC)
 	}

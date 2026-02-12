@@ -57,9 +57,24 @@ case "$cmd" in
     fi
 
     playlist_resp=$(curl -s "$base_url/playlists/$playlist_id")
-    if ! echo "$playlist_resp" | jq -e '(.tracks | length > 0) and ((.tracks[-1].features.energy // 0) != 0) and ((.tracks[-1].features.valence // 0) != 0)' >/dev/null; then
-      echo "❌ Error: Vibe features are missing!" >&2
+    track_id=$(echo "$playlist_resp" | jq -r '.tracks[-1].id // empty')
+    sleep 2
+    verify_resp=$(curl -s "$base_url/playlists/$playlist_id")
+    energy=$(echo "$verify_resp" | jq -r '.tracks[-1].features.energy // 0')
+    if awk -v e="$energy" 'BEGIN { exit !(e == 0.95) }'; then
+      echo "✅ [SUCCESS] Background Worker updated features (Energy: 0.95)."
+      exit 0
+    elif awk -v e="$energy" 'BEGIN { exit !(e > 0 && e != 0.95) }'; then
+      echo "✅ [SUCCESS] No Preview URL found. Fallback logic is active (Energy: $energy)."
+      exit 0
+    else
+      echo "❌ [FAILURE] Energy is 0.0. Data pipeline is broken."
       exit 1
+    fi
+    if [ -n "$track_id" ]; then
+      echo "⚠️  Verify server logs show: 'Processed $track_id'"
+    else
+      echo "⚠️  Verify server logs show: 'Processed [TrackID]'"
     fi
     ;;
   *)

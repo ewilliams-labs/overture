@@ -17,7 +17,7 @@ demo-create:
 
 demo-add:
     chmod +x scripts/demo_flow.sh
-    ./scripts/demo_flow.sh add-track "Blinding Lights" "The Weeknd"
+    ./scripts/demo_flow.sh add-track "Levitating" "Dua Lipa"
 
 demo: demo-create demo-add
 

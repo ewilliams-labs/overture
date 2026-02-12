@@ -14,6 +14,7 @@ import (
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/spotify"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/sqlite"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
+	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
 
 func main() {
@@ -49,7 +50,11 @@ func main() {
 
 	// 4. Initialize "Driving" Adapter (The Interface)
 	// The HTTP handler talks to the Service.
-	handler := rest.NewHandler(svc)
+	pool := worker.NewPool(dbAdapter, 2, 100)
+	pool.Start(2)
+	defer pool.Stop()
+
+	handler := rest.NewHandler(svc, pool)
 
 	// 5. Start the Server
 	log.Println("------------------------------------------------")

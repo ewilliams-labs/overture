@@ -29,6 +29,8 @@ type Track struct {
 	Album string `json:"album"`
 	// CoverURL is the URL to the album cover image.
 	CoverURL string `json:"cover_url"`
+	// PreviewURL is a short preview clip URL (if available).
+	PreviewURL string `json:"preview_url"`
 	// DurationMs is the duration of the track in milliseconds.
 	DurationMs int `json:"duration_ms"`
 	// ISRC (International Standard Recording Code) for the track.

@@ -7,18 +7,21 @@ import (
 	"net/http"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
+	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
 
 // Handler manages the HTTP interface for our application.
 type Handler struct {
 	svc    *services.Orchestrator // Dependency on the Core Service
-	router *http.ServeMux         // Standard library router
+	pool   *worker.Pool
+	router *http.ServeMux // Standard library router
 }
 
 // NewHandler initializes the HTTP adapter and sets up routes.
-func NewHandler(svc *services.Orchestrator) *Handler {
+func NewHandler(svc *services.Orchestrator, pool *worker.Pool) *Handler {
 	h := &Handler{
 		svc:    svc,
+		pool:   pool,
 		router: http.NewServeMux(),
 	}
 

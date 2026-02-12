@@ -95,7 +95,7 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 				repo:    &tc.fields.repo,
 			}
 
-			playlistID, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
+			playlistID, trackID, _, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
 
 			// Check error expectation
 			if (err != nil) != tc.wantErr {
@@ -107,6 +107,9 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 
 			if !tc.wantErr && playlistID != "pl-1" {
 				t.Fatalf("expected playlist id %q, got %q", "pl-1", playlistID)
+			}
+			if !tc.wantErr && tc.fields.spotify.track.ID != "" && trackID != tc.fields.spotify.track.ID {
+				t.Fatalf("expected track id %q, got %q", tc.fields.spotify.track.ID, trackID)
 			}
 
 			// Check persistence expectation
@@ -213,6 +216,10 @@ func (m *mockRepo) GetPlaylistAudioFeatures(ctx context.Context, playlistID stri
 		return domain.AudioFeatures{}, m.audioErr
 	}
 	return m.features, nil
+}
+
+func (m *mockRepo) UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error {
+	return nil
 }
 
 func TestOrchestrator_CreatePlaylist(t *testing.T) {

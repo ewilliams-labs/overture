@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
+	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
 
 const errCodeNoConfidentMatch = "NO_CONFIDENT_MATCH"
@@ -48,7 +49,7 @@ func (h *Handler) AddTrack(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Call the Service (The Core Logic)
 	// We pass the Context so the service can cancel long-running tasks if the user disconnects
-	playlistIDResult, err := h.svc.AddTrackToPlaylist(r.Context(), playlistID, req.Title, req.Artist)
+	playlistIDResult, trackID, previewURL, err := h.svc.AddTrackToPlaylist(r.Context(), playlistID, req.Title, req.Artist)
 	if err != nil {
 		var matchErr *ports.NoConfidentMatchError
 		if errors.As(err, &matchErr) {
@@ -58,6 +59,9 @@ func (h *Handler) AddTrack(w http.ResponseWriter, r *http.Request) {
 		// In a real app, you'd check the error type to decide between 400 vs 500
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.pool != nil {
+		h.pool.Submit(worker.Job{TrackID: trackID, PreviewURL: previewURL})
 	}
 
 	// 4. Return the Response

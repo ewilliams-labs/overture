@@ -10,5 +10,6 @@ import (
 type PlaylistRepository interface {
 	GetByID(ctx context.Context, id string) (domain.Playlist, error)
 	GetPlaylistAudioFeatures(ctx context.Context, playlistID string) (domain.AudioFeatures, error)
+	UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error
 	Save(ctx context.Context, p domain.Playlist) error
 }

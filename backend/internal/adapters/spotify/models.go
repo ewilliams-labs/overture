@@ -5,6 +5,7 @@ type spotifyTrack struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"` // API uses "name", Domain uses "Title"
 	DurationMs int    `json:"duration_ms"`
+	PreviewURL string `json:"preview_url"`
 	Artists    []struct {
 		Name string `json:"name"`
 	} `json:"artists"` // API is a list, Domain is a string

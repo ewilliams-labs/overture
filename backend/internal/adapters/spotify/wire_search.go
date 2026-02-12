@@ -38,6 +38,7 @@ func (c *Client) searchTrack(ctx context.Context, title string, artist string) (
 	query.Set("q", fmt.Sprintf("track:%s artist:%s", queryTitle, queryArtist))
 	query.Set("type", "track")
 	query.Set("limit", "5")
+	query.Set("market", "US")
 	searchURL.RawQuery = query.Encode()
 
 	log.Printf("DEBUG spotify adapter: search request URL: %s", searchURL.String())

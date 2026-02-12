@@ -28,6 +28,7 @@ func mapTrackToDomain(st spotifyTrack, features *spotifyAudioFeatures) domain.Tr
 		Artist:     strings.Join(artistNames, ", "),
 		Album:      st.Album.Name,
 		CoverURL:   coverURL,
+		PreviewURL: st.PreviewURL,
 		DurationMs: st.DurationMs,
 	}
 
