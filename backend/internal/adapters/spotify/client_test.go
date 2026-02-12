@@ -2,6 +2,7 @@ package spotify_test
 
 import (
 	"context"
+	"errors"
 	"hash/fnv"
 	"math/rand"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/spotify"
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 )
 
 // --- Helpers ---
@@ -112,6 +114,7 @@ func TestGetTrackByMetadata(t *testing.T) {
 		statusCode    int
 		expectedTrack domain.Track
 		expectErr     bool
+		expectErrIs   error
 	}{
 		{
 			name:       "successful track retrieval",
@@ -147,6 +150,49 @@ func TestGetTrackByMetadata(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:       "best match wins",
+			title:      "Test Track",
+			artist:     "Test Artist",
+			statusCode: http.StatusOK,
+			response: `{
+				"tracks": {
+					"items": [
+						{
+							"id": "1",
+							"name": "Test Track",
+							"duration_ms": 200000,
+							"artists": [ { "name": "Test Artist X" } ],
+							"album": {
+								"name": "Test Album",
+								"images": [ { "url": "http://img.com/1.jpg" } ]
+							}
+						},
+						{
+							"id": "2",
+							"name": "Test Track",
+							"duration_ms": 200000,
+							"artists": [ { "name": "Test Artist" } ],
+							"album": {
+								"name": "Test Album",
+								"images": [ { "url": "http://img.com/2.jpg" } ]
+							}
+						}
+					]
+				}
+			}`,
+			expectedTrack: domain.Track{
+				ID:         "2",
+				Title:      "Test Track",
+				Artist:     "Test Artist",
+				Album:      "Test Album",
+				CoverURL:   "http://img.com/2.jpg",
+				DurationMs: 200000,
+				ISRC:       "",
+				Features:   domain.AudioFeatures{},
+			},
+			expectErr: false,
+		},
+		{
 			name:       "not found (empty items list)",
 			title:      "Missing Track",
 			artist:     "Missing Artist",
@@ -175,7 +221,8 @@ func TestGetTrackByMetadata(t *testing.T) {
 					]
 				}
 			}`,
-			expectErr: true,
+			expectErr:   true,
+			expectErrIs: ports.ErrNoConfidentMatch,
 		},
 	}
 
@@ -193,8 +240,8 @@ func TestGetTrackByMetadata(t *testing.T) {
 				if query.Get("type") != "track" {
 					t.Errorf("type param: got %q, want %q", query.Get("type"), "track")
 				}
-				if query.Get("limit") != "1" {
-					t.Errorf("limit param: got %q, want %q", query.Get("limit"), "1")
+				if query.Get("limit") != "5" {
+					t.Errorf("limit param: got %q, want %q", query.Get("limit"), "5")
 				}
 				w.WriteHeader(tt.statusCode)
 				w.Write([]byte(tt.response))
@@ -206,6 +253,9 @@ func TestGetTrackByMetadata(t *testing.T) {
 			track, err := client.GetTrackByMetadata(context.Background(), tt.title, tt.artist)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("expected error: %v, got: %v", tt.expectErr, err)
+			}
+			if tt.expectErrIs != nil && !errors.Is(err, tt.expectErrIs) {
+				t.Errorf("expected error %v, got %v", tt.expectErrIs, err)
 			}
 
 			if !tt.expectErr {
@@ -437,8 +487,8 @@ func TestGetTrack(t *testing.T) {
 					if query.Get("type") != "track" {
 						t.Errorf("type param: got %q, want %q", query.Get("type"), "track")
 					}
-					if query.Get("limit") != "1" {
-						t.Errorf("limit param: got %q, want %q", query.Get("limit"), "1")
+					if query.Get("limit") != "5" {
+						t.Errorf("limit param: got %q, want %q", query.Get("limit"), "5")
 					}
 					w.WriteHeader(tt.searchStatus)
 					w.Write([]byte(tt.searchBody))

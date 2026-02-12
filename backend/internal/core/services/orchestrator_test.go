@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 )
 
 // TestOrchestrator_AddTrackToPlaylist verifies AddTrackToPlaylist behavior.
@@ -19,6 +20,7 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 		name          string
 		fields        fields
 		wantErr       bool
+		wantErrIs     error
 		wantSaved     bool
 		wantSavedISRC string
 	}{
@@ -53,6 +55,21 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 			wantSaved: false,
 		},
 		{
+			name: "Spotify no confident match",
+			fields: fields{
+				spotify: mockSpotify{
+					err: ports.ErrNoConfidentMatch,
+				},
+				repo: mockRepo{
+					getErr:  nil,
+					saveErr: nil,
+				},
+			},
+			wantErr:   true,
+			wantErrIs: ports.ErrNoConfidentMatch,
+			wantSaved: false,
+		},
+		{
 			name: "Repository save error",
 			fields: fields{
 				spotify: mockSpotify{
@@ -83,6 +100,9 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 			// Check error expectation
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("unexpected error state: got err=%v wantErr=%v", err, tc.wantErr)
+			}
+			if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
+				t.Fatalf("expected error %v, got %v", tc.wantErrIs, err)
 			}
 
 			if !tc.wantErr && playlistID != "pl-1" {

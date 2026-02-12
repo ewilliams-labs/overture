@@ -10,5 +10,17 @@ tidy:
 test:
 	go test ./...
 
-validate:
-	scripts/validate-endpoints.sh
+# Run full integration suite against a running server
+validate-acceptance:
+    chmod +x ./scripts/validate_api.sh
+    ./scripts/validate_api.sh
+
+# Complete CI pipeline: build, run, validate, kill
+ci-check:
+    go build -o overture ./cmd/server
+    ./overture & PID=$!; \
+    sleep 3; \
+    make validate-acceptance; \
+    EXIT_CODE=$?; \
+    kill $PID; \
+    exit $EXIT_CODE

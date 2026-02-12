@@ -9,7 +9,10 @@ import (
 	"net/url"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 )
+
+const searchMatchThreshold = 0.8
 
 // GetTrackByMetadata searches for a track using title and artist metadata.
 func (c *Client) GetTrackByMetadata(ctx context.Context, title string, artist string) (domain.Track, error) {
@@ -34,7 +37,7 @@ func (c *Client) searchTrack(ctx context.Context, title string, artist string) (
 	query := searchURL.Query()
 	query.Set("q", fmt.Sprintf("track:%s artist:%s", queryTitle, queryArtist))
 	query.Set("type", "track")
-	query.Set("limit", "1")
+	query.Set("limit", "5")
 	searchURL.RawQuery = query.Encode()
 
 	log.Printf("DEBUG spotify adapter: search request URL: %s", searchURL.String())
@@ -68,11 +71,26 @@ func (c *Client) searchTrack(ctx context.Context, title string, artist string) (
 		return spotifyTrack{}, fmt.Errorf("spotify adapter: no track found for title %q artist %q", title, artist)
 	}
 
-	candidate := searchBody.Tracks.Items[0]
-	score, ok := trackMatchScore(title, artist, candidate)
-	if !ok {
-		return spotifyTrack{}, fmt.Errorf("spotify adapter: no match for title %q artist %q (score %.2f)", title, artist, score)
+	maxItems := len(searchBody.Tracks.Items)
+	if maxItems > 5 {
+		maxItems = 5
+	}
+	bestScore := 0.0
+	bestIndex := -1
+	for i := 0; i < maxItems; i++ {
+		candidate := searchBody.Tracks.Items[i]
+		candidateArtist := joinArtistNames(candidate)
+		score := ScoreResult(artist, title, candidateArtist, candidate.Name)
+		log.Printf("DEBUG spotify adapter: Spotify Match: %s - %s (Score: %.2f)", candidateArtist, candidate.Name, score)
+		if score >= searchMatchThreshold && score > bestScore {
+			bestScore = score
+			bestIndex = i
+		}
 	}
 
-	return candidate, nil
+	if bestIndex == -1 {
+		return spotifyTrack{}, fmt.Errorf("spotify adapter: %w", &ports.NoConfidentMatchError{Title: title, Artist: artist})
+	}
+
+	return searchBody.Tracks.Items[bestIndex], nil
 }

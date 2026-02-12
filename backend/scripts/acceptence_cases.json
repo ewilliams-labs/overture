@@ -1,0 +1,29 @@
+[
+  {
+    "id": "health-check",
+    "method": "GET",
+    "path": "/health",
+    "expected_status": 200
+  },
+  {
+    "id": "valid-track-addition",
+    "method": "POST",
+    "path": "/playlists/{{playlist_id}}/tracks",
+    "payload": { "title": "Solaris", "artist": "Carbon Based Lifeforms" },
+    "expected_status": 201
+  },
+  {
+    "id": "fuzzy-match-validation",
+    "method": "POST",
+    "path": "/playlists/{{playlist_id}}/tracks",
+    "payload": { "title": "Solaris - Remastered", "artist": "Carbon Based Lifeforms" },
+    "expected_status": 201
+  },
+  {
+    "id": "fail-on-low-confidence",
+    "method": "POST",
+    "path": "/playlists/{{playlist_id}}/tracks",
+    "payload": { "title": "A Very Obscure Song That Doesnt Exist", "artist": "No One" },
+    "expected_status": 422
+  }
+]

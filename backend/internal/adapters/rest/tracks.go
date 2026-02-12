@@ -2,8 +2,13 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 )
+
+const errCodeNoConfidentMatch = "NO_CONFIDENT_MATCH"
 
 // addTrackRequest defines what the client sends us
 type addTrackRequest struct {
@@ -45,6 +50,11 @@ func (h *Handler) AddTrack(w http.ResponseWriter, r *http.Request) {
 	// We pass the Context so the service can cancel long-running tasks if the user disconnects
 	playlistIDResult, err := h.svc.AddTrackToPlaylist(r.Context(), playlistID, req.Title, req.Artist)
 	if err != nil {
+		var matchErr *ports.NoConfidentMatchError
+		if errors.As(err, &matchErr) {
+			writeErrorWithCode(w, http.StatusUnprocessableEntity, matchErr.Error(), errCodeNoConfidentMatch)
+			return
+		}
 		// In a real app, you'd check the error type to decide between 400 vs 500
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

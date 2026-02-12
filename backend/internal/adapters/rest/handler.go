@@ -52,6 +52,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 func isJSONContentType(r *http.Request) bool {
@@ -68,6 +69,10 @@ func isJSONContentType(r *http.Request) bool {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorResponse{Error: msg})
+}
+
+func writeErrorWithCode(w http.ResponseWriter, status int, msg string, code string) {
+	writeJSON(w, status, errorResponse{Error: msg, Code: code})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

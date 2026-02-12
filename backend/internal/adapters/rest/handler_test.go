@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 )
 
@@ -27,9 +28,14 @@ import (
 // BUT, for this test to work with your current architecture (Handler -> *Service),
 // we actually need to create a REAL Service with MOCK Adapters.
 
-type mockSpotify struct{}
+type mockSpotify struct {
+	err error
+}
 
 func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist string) (domain.Track, error) {
+	if m.err != nil {
+		return domain.Track{}, m.err
+	}
 	return domain.Track{ID: "t1", Title: title, Artist: artist}, nil
 }
 
@@ -66,6 +72,7 @@ func TestHandler_AddTrack(t *testing.T) {
 	tests := []struct {
 		name           string
 		body           map[string]string // Use map to control JSON keys explicitly
+		spotifyErr     error
 		mockRepoFail   bool
 		expectedStatus int
 		expectedBody   string
@@ -90,6 +97,17 @@ func TestHandler_AddTrack(t *testing.T) {
 			expectedBody:   "title and artist are required",
 		},
 		{
+			name: "Unprocessable: no confident match",
+			body: map[string]string{
+				"title":  "Song One",
+				"artist": "Artist A",
+			},
+			spotifyErr:     &ports.NoConfidentMatchError{Title: "Song One", Artist: "Artist A"},
+			mockRepoFail:   false,
+			expectedStatus: http.StatusUnprocessableEntity,
+			expectedBody:   "\"code\":\"NO_CONFIDENT_MATCH\"",
+		},
+		{
 			name: "Service Error: orchestrator returns error -> StatusInternalServerError",
 			body: map[string]string{
 				"title":  "Song One",
@@ -105,7 +123,7 @@ func TestHandler_AddTrack(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 1. Setup Dependencies
 			// Since Handler depends on concrete *Orchestrator, we build a real one with mock adapters
-			spotify := &mockSpotify{}
+			spotify := &mockSpotify{err: tt.spotifyErr}
 			repo := &mockRepo{shouldFailSave: tt.mockRepoFail}
 			svc := services.NewOrchestrator(spotify, repo)
 
