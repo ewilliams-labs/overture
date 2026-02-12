@@ -121,6 +121,7 @@ func TestGetTrackByMetadata(t *testing.T) {
 		expectedTrack domain.Track
 		expectErr     bool
 		expectErrIs   error
+		minConfidence string
 	}{
 		{
 			name:       "successful track retrieval",
@@ -209,8 +210,8 @@ func TestGetTrackByMetadata(t *testing.T) {
 		},
 		{
 			name:       "top result does not match",
-			title:      "Desired Track",
-			artist:     "Desired Artist",
+			title:      "Completely Unrelated",
+			artist:     "Another Artist",
 			statusCode: http.StatusOK,
 			response: `{
 				"tracks": {
@@ -228,8 +229,9 @@ func TestGetTrackByMetadata(t *testing.T) {
 					]
 				}
 			}`,
-			expectErr:   true,
-			expectErrIs: ports.ErrNoConfidentMatch,
+			expectErr:     true,
+			expectErrIs:   ports.ErrNoConfidentMatch,
+			minConfidence: "0.8",
 		},
 	}
 
@@ -256,6 +258,9 @@ func TestGetTrackByMetadata(t *testing.T) {
 			defer ts.Close()
 
 			client := spotify.NewClientWithBaseURL(http.DefaultClient, ts.URL)
+			if tt.minConfidence != "" {
+				t.Setenv("SPOTIFY_MIN_CONFIDENCE", tt.minConfidence)
+			}
 
 			track, err := client.GetTrackByMetadata(context.Background(), tt.title, tt.artist)
 			if (err != nil) != tt.expectErr {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
@@ -69,20 +68,21 @@ func (p *Pool) processJob(job Job) {
 		return
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	log.Printf("🎵 Analyzing Track %s...", job.TrackID)
+	energy, err := AnalyzePreviewFunc(job.PreviewURL)
+	if err != nil {
+		log.Printf("WARN worker: analysis failed for %s: %v", job.TrackID, err)
+		return
+	}
+	log.Printf("✅ Analysis complete: Energy=%.2f", energy)
 
 	features := domain.AudioFeatures{
-		Danceability:     0.15,
-		Energy:           0.95,
-		Valence:          0.95,
-		Tempo:            128.0,
-		Instrumentalness: 0.05,
-		Acousticness:     0.1,
+		Energy:  energy,
+		Valence: 0,
 	}
 	if err := p.repo.UpdateTrackFeatures(context.Background(), job.TrackID, features); err != nil {
 		log.Printf("WARN worker: failed to update track %s: %v", job.TrackID, err)
 		return
 	}
-	log.Printf("Processed %s", job.TrackID)
-	log.Printf("💾 Updated Track %s with analyzed features (0.95).", job.TrackID)
+	log.Printf("💾 Updated Track %s with analyzed features (Energy: %.2f).", job.TrackID, energy)
 }

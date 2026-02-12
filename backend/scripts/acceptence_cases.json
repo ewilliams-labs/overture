@@ -43,6 +43,16 @@
     "expected_status": 201
   },
   {
+    "id": "verify-audio-analysis-persistence",
+    "method": "GET",
+    "path": "/playlists/{{playlist_id}}",
+    "expected_status": 200,
+    "poll_json_path": ".tracks[-1].features.energy",
+    "poll_json_min": 0.0001,
+    "poll_interval_ms": 500,
+    "poll_timeout_ms": 3000
+  },
+  {
     "id": "fail-on-low-confidence",
     "method": "POST",
     "path": "/playlists/{{playlist_id}}/tracks",

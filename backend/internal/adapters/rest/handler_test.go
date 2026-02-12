@@ -9,10 +9,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ewilliams-labs/overture/backend/internal/adapters/sqlite"
 	"github.com/ewilliams-labs/overture/backend/internal/core/domain"
 	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
+	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
 
 // --- Mocks ---
@@ -29,14 +32,18 @@ import (
 // we actually need to create a REAL Service with MOCK Adapters.
 
 type mockSpotify struct {
-	err error
+	err   error
+	track domain.Track
 }
 
 func (m *mockSpotify) GetTrackByMetadata(ctx context.Context, title, artist string) (domain.Track, error) {
 	if m.err != nil {
 		return domain.Track{}, m.err
 	}
-	return domain.Track{ID: "t1", Title: title, Artist: artist}, nil
+	if m.track.ID != "" {
+		return m.track, nil
+	}
+	return domain.Track{ID: "t1", Title: title, Artist: artist, PreviewURL: "http://example.com/preview.mp3"}, nil
 }
 
 func (m *mockSpotify) GetTrack(ctx context.Context, title, artist string) (domain.Track, error) {
@@ -395,4 +402,64 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandler_AsyncAudioAnalysis(t *testing.T) {
+	origAnalyze := worker.AnalyzePreviewFunc
+	worker.AnalyzePreviewFunc = func(url string) (float64, error) {
+		return 0.95, nil
+	}
+	defer func() { worker.AnalyzePreviewFunc = origAnalyze }()
+
+	repo, err := sqlite.NewAdapter(":memory:")
+	if err != nil {
+		t.Fatalf("new adapter: %v", err)
+	}
+	defer repo.Close()
+
+	track := domain.Track{ID: "t-async", Title: "Blinding Lights", Artist: "The Weeknd", PreviewURL: "http://example.com/preview.mp3"}
+	spotifyMock := &mockSpotify{track: track}
+	svc := services.NewOrchestrator(spotifyMock, repo)
+
+	pool := worker.NewPool(repo, 1, 10)
+	pool.Start(1)
+	defer pool.Stop()
+
+	h := NewHandler(svc, pool)
+
+	playlist, err := svc.CreatePlaylist(context.Background(), "Async Test")
+	if err != nil {
+		t.Fatalf("create playlist: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]string{"title": "Blinding Lights", "artist": "The Weeknd"})
+	req := httptest.NewRequest(http.MethodPost, "/playlists/"+playlist.ID+"/tracks", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", playlist.ID)
+	rec := httptest.NewRecorder()
+	h.AddTrack(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		pollReq := httptest.NewRequest(http.MethodGet, "/playlists/"+playlist.ID, nil)
+		pollReq.SetPathValue("id", playlist.ID)
+		pollRec := httptest.NewRecorder()
+		h.GetPlaylist(pollRec, pollReq)
+		if pollRec.Code != http.StatusOK {
+			t.Fatalf("poll status: got %d", pollRec.Code)
+		}
+		var got domain.Playlist
+		if err := json.NewDecoder(pollRec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode playlist: %v", err)
+		}
+		if len(got.Tracks) > 0 && got.Tracks[0].Features.Energy != 0 {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for async audio analysis")
 }

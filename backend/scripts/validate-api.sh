@@ -18,6 +18,11 @@ CREATE_RESP=$(curl -s -X POST "$BASE_URL/playlists" -H "Content-Type: applicatio
 PLAYLIST_ID=$(echo "$CREATE_RESP" | jq -r '.id')
 
 echo "✅ Created Test Playlist: $PLAYLIST_ID"
+if [ -z "$PLAYLIST_ID" ] || [ "$PLAYLIST_ID" = "null" ]; then
+    echo "❌ FAILED (Playlist creation missing id)"
+    echo "$CREATE_RESP"
+    exit 1
+fi
 
 # 2. Iterate through cases
 cat "$TEST_DATA" | jq -c '.[]' | while read -r test; do
@@ -31,6 +36,10 @@ cat "$TEST_DATA" | jq -c '.[]' | while read -r test; do
     BODY_CONTAINS=$(echo "$test" | jq -r '.expected_body_contains // empty')
     JSON_PATH=$(echo "$test" | jq -r '.expected_json_path // empty')
     JSON_MIN=$(echo "$test" | jq -r '.expected_json_min // empty')
+    POLL_PATH=$(echo "$test" | jq -r '.poll_json_path // empty')
+    POLL_MIN=$(echo "$test" | jq -r '.poll_json_min // empty')
+    POLL_INTERVAL=$(echo "$test" | jq -r '.poll_interval_ms // empty')
+    POLL_TIMEOUT=$(echo "$test" | jq -r '.poll_timeout_ms // empty')
 
     echo -n "🧪 Testing $ID... "
 
@@ -52,7 +61,30 @@ cat "$TEST_DATA" | jq -c '.[]' | while read -r test; do
         exit 1
     fi
 
-    if [ -n "$JSON_PATH" ] && [ -n "$JSON_MIN" ]; then
+    if [ -n "$POLL_PATH" ] && [ -n "$POLL_MIN" ]; then
+        interval_ms=${POLL_INTERVAL:-500}
+        timeout_ms=${POLL_TIMEOUT:-3000}
+        elapsed_ms=0
+        while true; do
+            actual=$(jq -r "$POLL_PATH" "$tmp_file" 2>/dev/null || true)
+            if [[ "$actual" =~ ^-?[0-9]+([.][0-9]+)?$ ]] && awk -v a="$actual" -v b="$POLL_MIN" 'BEGIN { exit !(a >= b) }'; then
+                break
+            fi
+            if [ "$elapsed_ms" -ge "$timeout_ms" ]; then
+                echo "❌ FAILED (Expected $POLL_PATH >= $POLL_MIN, got $actual)"
+                cat "$tmp_file"
+                exit 1
+            fi
+            sleep $(awk -v ms="$interval_ms" 'BEGIN { printf "%.3f", ms/1000 }')
+            elapsed_ms=$((elapsed_ms + interval_ms))
+            STATUS=$(curl -s -o "$tmp_file" -w "%{http_code}" -X "$METHOD" "$URL")
+            if [ "$STATUS" -ne "$EXPECTED" ]; then
+                echo "❌ FAILED (Expected $EXPECTED, got $STATUS)"
+                cat "$tmp_file"
+                exit 1
+            fi
+        done
+    elif [ -n "$JSON_PATH" ] && [ -n "$JSON_MIN" ]; then
         actual=$(jq -r "$JSON_PATH" "$tmp_file" 2>/dev/null || true)
         if ! [[ "$actual" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
             echo "❌ FAILED (Expected numeric result at $JSON_PATH)"

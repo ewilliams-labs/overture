@@ -13,6 +13,7 @@ import (
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/rest"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/spotify"
 	"github.com/ewilliams-labs/overture/backend/internal/adapters/sqlite"
+	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
@@ -30,13 +31,30 @@ func main() {
 
 	// 2. Initialize "Driven" Adapters (The Tools)
 	// -- Database Adapter
-	// We create the concrete struct here so we can defer Close()
-	dbAdapter, err := sqlite.NewAdapter("overture.db")
-	if err != nil {
-		log.Fatalf("FATAL: Failed to initialize database: %v", err)
+	storageDriver := os.Getenv("STORAGE_DRIVER")
+	if storageDriver == "" {
+		storageDriver = "sqlite"
 	}
-	// Ensure the connection closes when the server stops
-	defer dbAdapter.Close()
+
+	var repo ports.PlaylistRepository
+	var repoCloser func() error
+
+	switch storageDriver {
+	case "sqlite":
+		dbAdapter, err := sqlite.NewAdapter("overture.db")
+		if err != nil {
+			log.Fatalf("FATAL: Failed to initialize database: %v", err)
+		}
+		repo = dbAdapter
+		repoCloser = dbAdapter.Close
+	case "postgres":
+		log.Fatal("Postgres driver not yet implemented")
+	default:
+		log.Fatalf("Unknown storage driver: %s", storageDriver)
+	}
+	if repoCloser != nil {
+		defer repoCloser()
+	}
 
 	// -- Spotify Adapter
 	spotifyClient := spotify.NewClient(clientID, clientSecret)
@@ -46,11 +64,11 @@ func main() {
 	// We inject the specific adapters into the agnostic service.
 	// The compiler guarantees that dbAdapter implements ports.PlaylistRepository
 	// and spotifyClient implements ports.SpotifyClient.
-	svc := services.NewOrchestrator(spotifyClient, dbAdapter)
+	svc := services.NewOrchestrator(spotifyClient, repo)
 
 	// 4. Initialize "Driving" Adapter (The Interface)
 	// The HTTP handler talks to the Service.
-	pool := worker.NewPool(dbAdapter, 2, 100)
+	pool := worker.NewPool(repo, 2, 100)
 	pool.Start(2)
 	defer pool.Stop()
 

@@ -71,11 +71,6 @@ case "$cmd" in
       echo "❌ [FAILURE] Energy is 0.0. Data pipeline is broken."
       exit 1
     fi
-    if [ -n "$track_id" ]; then
-      echo "⚠️  Verify server logs show: 'Processed $track_id'"
-    else
-      echo "⚠️  Verify server logs show: 'Processed [TrackID]'"
-    fi
     ;;
   *)
     usage
