@@ -3,10 +3,10 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 
-	"github.com/ewilliams-labs/overture/backend/internal/core/ports"
 	"github.com/ewilliams-labs/overture/backend/internal/core/services"
 	"github.com/ewilliams-labs/overture/backend/internal/worker"
 )
@@ -15,16 +15,14 @@ import (
 type Handler struct {
 	svc    *services.Orchestrator // Dependency on the Core Service
 	pool   *worker.Pool
-	intent ports.IntentCompiler
 	router *http.ServeMux // Standard library router
 }
 
 // NewHandler initializes the HTTP adapter and sets up routes.
-func NewHandler(svc *services.Orchestrator, pool *worker.Pool, intent ports.IntentCompiler) *Handler {
+func NewHandler(svc *services.Orchestrator, pool *worker.Pool) *Handler {
 	h := &Handler{
 		svc:    svc,
 		pool:   pool,
-		intent: intent,
 		router: http.NewServeMux(),
 	}
 
@@ -91,4 +89,24 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
+}
+
+// writeSSEEvent writes a Server-Sent Event to the response writer.
+// Format: event: <eventType>\ndata: <json>\n\n
+func writeSSEEvent(w http.ResponseWriter, rc *http.ResponseController, eventType string, data any) error {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal SSE data: %w", err)
+	}
+
+	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, jsonData)
+	if err != nil {
+		return fmt.Errorf("failed to write SSE event: %w", err)
+	}
+
+	if err := rc.Flush(); err != nil {
+		return fmt.Errorf("failed to flush SSE event: %w", err)
+	}
+
+	return nil
 }

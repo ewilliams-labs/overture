@@ -12,4 +12,5 @@ type PlaylistRepository interface {
 	GetPlaylistAudioFeatures(ctx context.Context, playlistID string) (domain.AudioFeatures, error)
 	UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error
 	Save(ctx context.Context, p domain.Playlist) error
+	AddTracksToPlaylist(ctx context.Context, playlistID string, tracks []domain.Track) error
 }

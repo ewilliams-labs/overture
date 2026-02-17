@@ -54,6 +54,13 @@ func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackI
 	return domain.Playlist{}, nil
 }
 
+func (m *mockSpotify) GetArtistTopTracks(ctx context.Context, artistName string) ([]domain.Track, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return []domain.Track{m.track}, nil
+}
+
 type mockRepo struct {
 	shouldFailSave bool
 	getErr         error
@@ -87,6 +94,13 @@ func (m *mockRepo) GetPlaylistAudioFeatures(ctx context.Context, playlistID stri
 }
 
 func (m *mockRepo) UpdateTrackFeatures(ctx context.Context, trackID string, features domain.AudioFeatures) error {
+	return nil
+}
+
+func (m *mockRepo) AddTracksToPlaylist(ctx context.Context, playlistID string, tracks []domain.Track) error {
+	if m.shouldFailSave {
+		return errors.New("db error")
+	}
 	return nil
 }
 
@@ -165,10 +179,10 @@ func TestHandler_AddTrack(t *testing.T) {
 			// Since Handler depends on concrete *Orchestrator, we build a real one with mock adapters
 			spotify := &mockSpotify{err: tt.spotifyErr}
 			repo := &mockRepo{shouldFailSave: tt.mockRepoFail}
-			svc := services.NewOrchestrator(spotify, repo)
+			svc := services.NewOrchestrator(spotify, repo, nil)
 
 			// 2. Setup Handler
-			h := NewHandler(svc, nil, nil)
+			h := NewHandler(svc, nil)
 
 			// 3. Create Request
 			jsonBody, _ := json.Marshal(tt.body)
@@ -233,8 +247,8 @@ func TestHandler_CreatePlaylist(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// 1. Setup
 			repo := &mockRepo{shouldFailSave: tc.mockRepoFail}
-			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc, nil, nil)
+			svc := services.NewOrchestrator(&mockSpotify{}, repo, nil)
+			h := NewHandler(svc, nil)
 
 			// 2. Request
 			var bodyBytes []byte
@@ -310,8 +324,8 @@ func TestHandler_GetPlaylist(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockRepo{getErr: tt.mockGetErr}
-			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc, nil, nil)
+			svc := services.NewOrchestrator(&mockSpotify{}, repo, nil)
+			h := NewHandler(svc, nil)
 
 			var req *http.Request
 			if tt.useRouter {
@@ -392,8 +406,8 @@ func TestHandler_GetPlaylistAnalysis(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockRepo{audioErr: tt.mockGetErr, features: tt.features}
-			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc, nil, nil)
+			svc := services.NewOrchestrator(&mockSpotify{}, repo, nil)
+			h := NewHandler(svc, nil)
 
 			var req *http.Request
 			if tt.useRouter {
@@ -425,87 +439,142 @@ func TestHandler_AnalyzeIntent(t *testing.T) {
 	intent.Explanation = "test"
 	intent.Entities.Artists = []string{"Willie Nelson"}
 
-	tests := []struct {
-		name           string
-		body           map[string]string
-		contentType    string
-		compiler       *mockIntentCompiler
-		expectedStatus int
-		expectedBody   string
-		wantCalled     bool
-	}{
-		{
-			name:           "Success: returns intent",
-			body:           map[string]string{"message": "Give me Willie Nelson style songs with no auto-tune"},
-			contentType:    "application/json",
-			compiler:       &mockIntentCompiler{intent: intent},
-			expectedStatus: http.StatusOK,
-			expectedBody:   "\"explanation\"",
-			wantCalled:     true,
-		},
-		{
-			name:           "Bad Request: missing message",
-			body:           map[string]string{"message": ""},
-			contentType:    "application/json",
-			compiler:       &mockIntentCompiler{intent: intent},
-			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "message is required",
-			wantCalled:     false,
-		},
-		{
-			name:           "Unsupported Media Type",
-			body:           map[string]string{"message": "test"},
-			contentType:    "",
-			compiler:       &mockIntentCompiler{intent: intent},
-			expectedStatus: http.StatusUnsupportedMediaType,
-			expectedBody:   "Content-Type must be application/json",
-			wantCalled:     false,
-		},
-		{
-			name:           "Not Implemented: compiler missing",
-			body:           map[string]string{"message": "test"},
-			contentType:    "application/json",
-			compiler:       nil,
-			expectedStatus: http.StatusNotImplemented,
-			expectedBody:   "intent compiler not configured",
-			wantCalled:     false,
-		},
-		{
-			name:           "Server Error: compiler failure",
-			body:           map[string]string{"message": "test"},
-			contentType:    "application/json",
-			compiler:       &mockIntentCompiler{err: errors.New("intent error")},
-			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   "intent error",
-			wantCalled:     true,
-		},
-	}
+	t.Run("Success: returns SSE stream with intent", func(t *testing.T) {
+		compiler := &mockIntentCompiler{intent: intent}
+		repo := &mockRepo{}
+		svc := services.NewOrchestrator(&mockSpotify{}, repo, compiler)
+		h := NewHandler(svc, nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &mockRepo{}
-			svc := services.NewOrchestrator(&mockSpotify{}, repo)
-			h := NewHandler(svc, nil, tt.compiler)
+		bodyBytes, _ := json.Marshal(map[string]string{"message": "Give me Willie Nelson style songs"})
+		req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
 
-			bodyBytes, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
-			if tt.contentType != "" {
-				req.Header.Set("Content-Type", tt.contentType)
-			}
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
+		// SSE always returns 200 OK
+		if rec.Code != http.StatusOK {
+			t.Errorf("Status Code: got %d, want %d", rec.Code, http.StatusOK)
+		}
 
-			if rec.Code != tt.expectedStatus {
-				t.Errorf("Status Code: got %d, want %d", rec.Code, tt.expectedStatus)
-			}
-			if !strings.Contains(rec.Body.String(), tt.expectedBody) {
-				t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), tt.expectedBody)
-			}
-			if tt.compiler != nil && tt.wantCalled != tt.compiler.called {
-				t.Errorf("expected compiler called=%v, got %v", tt.wantCalled, tt.compiler.called)
-			}
-		})
-	}
+		// Check Content-Type header
+		contentType := rec.Header().Get("Content-Type")
+		if contentType != "text/event-stream" {
+			t.Errorf("Content-Type: got %q, want %q", contentType, "text/event-stream")
+		}
+
+		body := rec.Body.String()
+
+		// Should have initial "thinking" event
+		if !strings.Contains(body, "event: status") {
+			t.Errorf("Response should contain 'event: status', got %q", body)
+		}
+		if !strings.Contains(body, "\"status\":\"thinking\"") {
+			t.Errorf("Response should contain thinking status, got %q", body)
+		}
+
+		// Should have final "complete" event with intent data
+		if !strings.Contains(body, "event: complete") {
+			t.Errorf("Response should contain 'event: complete', got %q", body)
+		}
+		if !strings.Contains(body, "\"explanation\":\"test\"") {
+			t.Errorf("Response should contain explanation, got %q", body)
+		}
+
+		if !compiler.called {
+			t.Error("expected compiler to be called")
+		}
+	})
+
+	t.Run("Bad Request: missing message", func(t *testing.T) {
+		compiler := &mockIntentCompiler{intent: intent}
+		repo := &mockRepo{}
+		svc := services.NewOrchestrator(&mockSpotify{}, repo, compiler)
+		h := NewHandler(svc, nil)
+
+		bodyBytes, _ := json.Marshal(map[string]string{"message": ""})
+		req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("Status Code: got %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+		if !strings.Contains(rec.Body.String(), "message is required") {
+			t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), "message is required")
+		}
+	})
+
+	t.Run("Unsupported Media Type", func(t *testing.T) {
+		compiler := &mockIntentCompiler{intent: intent}
+		repo := &mockRepo{}
+		svc := services.NewOrchestrator(&mockSpotify{}, repo, compiler)
+		h := NewHandler(svc, nil)
+
+		bodyBytes, _ := json.Marshal(map[string]string{"message": "test"})
+		req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
+		// No Content-Type header
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("Status Code: got %d, want %d", rec.Code, http.StatusUnsupportedMediaType)
+		}
+		if !strings.Contains(rec.Body.String(), "Content-Type must be application/json") {
+			t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), "Content-Type must be application/json")
+		}
+	})
+
+	t.Run("Not Implemented: compiler missing", func(t *testing.T) {
+		repo := &mockRepo{}
+		svc := services.NewOrchestrator(&mockSpotify{}, repo, nil) // nil compiler
+		h := NewHandler(svc, nil)
+
+		bodyBytes, _ := json.Marshal(map[string]string{"message": "test"})
+		req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("Status Code: got %d, want %d", rec.Code, http.StatusNotImplemented)
+		}
+		if !strings.Contains(rec.Body.String(), "intent compiler not configured") {
+			t.Errorf("Response Body: got %q, want substring %q", rec.Body.String(), "intent compiler not configured")
+		}
+	})
+
+	t.Run("SSE Error: compiler failure", func(t *testing.T) {
+		compiler := &mockIntentCompiler{err: errors.New("intent error")}
+		repo := &mockRepo{}
+		svc := services.NewOrchestrator(&mockSpotify{}, repo, compiler)
+		h := NewHandler(svc, nil)
+
+		bodyBytes, _ := json.Marshal(map[string]string{"message": "test"})
+		req := httptest.NewRequest(http.MethodPost, "/playlists/p1/intent", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		// SSE returns 200 OK even for errors after stream starts
+		if rec.Code != http.StatusOK {
+			t.Errorf("Status Code: got %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		body := rec.Body.String()
+
+		// Should have error event
+		if !strings.Contains(body, "event: error") {
+			t.Errorf("Response should contain 'event: error', got %q", body)
+		}
+		if !strings.Contains(body, "intent error") {
+			t.Errorf("Response should contain error message, got %q", body)
+		}
+
+		if !compiler.called {
+			t.Error("expected compiler to be called")
+		}
+	})
 }
 
 func TestHandler_AsyncAudioAnalysis(t *testing.T) {
@@ -523,13 +592,13 @@ func TestHandler_AsyncAudioAnalysis(t *testing.T) {
 
 	track := domain.Track{ID: "t-async", Title: "Blinding Lights", Artist: "The Weeknd", PreviewURL: "http://example.com/preview.mp3"}
 	spotifyMock := &mockSpotify{track: track}
-	svc := services.NewOrchestrator(spotifyMock, repo)
+	svc := services.NewOrchestrator(spotifyMock, repo, nil)
 
 	pool := worker.NewPool(repo, 1, 10)
 	pool.Start(1)
 	defer pool.Stop()
 
-	h := NewHandler(svc, pool, nil)
+	h := NewHandler(svc, pool)
 
 	playlist, err := svc.CreatePlaylist(context.Background(), "Async Test")
 	if err != nil {

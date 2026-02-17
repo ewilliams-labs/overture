@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ const systemPrompt = "You are the Overture Music Intent Engine. Your goal is to 
 
 type Client struct {
 	baseURL    string
+	model      string
 	httpClient *http.Client
 }
 
@@ -46,17 +48,22 @@ func NewClient(baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
+	model := os.Getenv("OLLAMA_MODEL")
+	if model == "" {
+		model = "deepseek-r1:8b"
+	}
 	return &Client{
 		baseURL: baseURL,
+		model:   model,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 	}
 }
 
 func (c *Client) AnalyzeIntent(ctx context.Context, message string) (domain.IntentObject, error) {
 	payload := chatRequest{
-		Model:  "deepseek-r1:8b",
+		Model:  c.model,
 		Stream: false,
 		Format: "json",
 		Messages: []chatMessage{

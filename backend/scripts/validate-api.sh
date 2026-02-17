@@ -3,8 +3,7 @@ set -e
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 TEST_DATA="${TEST_DATA:-./scripts/acceptence_cases.json}"
-OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
-OLLAMA_OPTIONAL="${OLLAMA_OPTIONAL:-1}"
+RUN_AI_TESTS="${RUN_AI_TESTS:-false}"
 
 echo "🚀 Starting Overture Acceptance Suite..."
 
@@ -43,15 +42,40 @@ cat "$TEST_DATA" | jq -c '.[]' | while read -r test; do
     POLL_INTERVAL=$(echo "$test" | jq -r '.poll_interval_ms // empty')
     POLL_TIMEOUT=$(echo "$test" | jq -r '.poll_timeout_ms // empty')
 
-    if [ "$ID" = "complex-intent-parsing" ] && [ "$OLLAMA_OPTIONAL" = "1" ]; then
-        OLLAMA_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$OLLAMA_URL/api/tags" || true)
-        if [ "$OLLAMA_STATUS" != "200" ]; then
-            echo "🧪 Testing $ID... ⚠️  Skipped (Ollama not running)"
-            continue
-        fi
+    if [ "$ID" = "complex-intent-parsing" ] && [ "$RUN_AI_TESTS" != "true" ]; then
+        echo "🧪 Testing $ID... ⚠️  Skipped (RUN_AI_TESTS not enabled)"
+        continue
     fi
 
     echo -n "🧪 Testing $ID... "
+
+    # Special handling for SSE streaming endpoints
+    if [ "$ID" = "complex-intent-parsing" ]; then
+        # Use curl -N for SSE streaming with timeout
+        STATUS=$(curl -s -N --max-time 60 -o "$tmp_file" -w "%{http_code}" -X "$METHOD" "$URL" -H "Content-Type: application/json" -d "$PAYLOAD")
+        
+        if [ "$STATUS" -ne "$EXPECTED" ]; then
+            echo "❌ FAILED (Expected $EXPECTED, got $STATUS)"
+            cat "$tmp_file"
+            exit 1
+        fi
+        
+        # Check for SSE complete event with expected content
+        if ! grep -q "event: complete" "$tmp_file"; then
+            echo "❌ FAILED (Missing SSE 'complete' event)"
+            cat "$tmp_file"
+            exit 1
+        fi
+        
+        if [ -n "$BODY_CONTAINS" ] && ! grep -qE "$BODY_CONTAINS" "$tmp_file"; then
+            echo "❌ FAILED (Body missing $BODY_CONTAINS)"
+            cat "$tmp_file"
+            exit 1
+        fi
+        
+        echo "✅ (Status $STATUS)"
+        continue
+    fi
 
     if [[ -n "$PAYLOAD" ]]; then
         STATUS=$(curl -s -o "$tmp_file" -w "%{http_code}" -X "$METHOD" "$URL" -H "Content-Type: application/json" -d "$PAYLOAD")

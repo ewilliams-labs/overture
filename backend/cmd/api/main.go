@@ -63,7 +63,8 @@ func main() {
 	// We inject the specific adapters into the agnostic service.
 	// The compiler guarantees that dbAdapter implements ports.PlaylistRepository
 	// and spotifyClient implements ports.SpotifyClient.
-	svc := services.NewOrchestrator(spotifyClient, repo)
+	intentCompiler := ollama.NewClient(os.Getenv("OLLAMA_HOST"))
+	svc := services.NewOrchestrator(spotifyClient, repo, intentCompiler)
 
 	// 4. Initialize "Driving" Adapter (The Interface)
 	// The HTTP handler talks to the Service.
@@ -71,8 +72,7 @@ func main() {
 	pool.Start(2)
 	defer pool.Stop()
 
-	intentCompiler := ollama.NewClient(os.Getenv("OLLAMA_URL"))
-	handler := rest.NewHandler(svc, pool, intentCompiler)
+	handler := rest.NewHandler(svc, pool)
 
 	// 5. Start the Server
 	log.Println("------------------------------------------------")

@@ -93,6 +93,7 @@ func TestOrchestrator_AddTrackToPlaylist(t *testing.T) {
 			o := &Orchestrator{
 				spotify: &tc.fields.spotify,
 				repo:    &tc.fields.repo,
+				intent:  nil,
 			}
 
 			playlistID, trackID, _, err := o.AddTrackToPlaylist(context.Background(), "pl-1", tc.fields.spotify.track.Title, tc.fields.spotify.track.Artist)
@@ -171,6 +172,14 @@ func (m *mockSpotify) AddTrackToPlaylist(ctx context.Context, playlistID, trackI
 	return domain.Playlist{}, nil
 }
 
+// GetArtistTopTracks stub to satisfy ports.SpotifyProvider interface.
+func (m *mockSpotify) GetArtistTopTracks(ctx context.Context, artistName string) ([]domain.Track, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return []domain.Track{m.track}, nil
+}
+
 // mockRepo is a minimal mock for PlaylistRepository.
 type mockRepo struct {
 	getErr   error
@@ -222,6 +231,13 @@ func (m *mockRepo) UpdateTrackFeatures(ctx context.Context, trackID string, feat
 	return nil
 }
 
+func (m *mockRepo) AddTracksToPlaylist(ctx context.Context, playlistID string, tracks []domain.Track) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	return nil
+}
+
 func TestOrchestrator_CreatePlaylist(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -255,7 +271,7 @@ func TestOrchestrator_CreatePlaylist(t *testing.T) {
 			mockRepo := &mockRepo{saveErr: tc.mockErr}
 			mockSpotify := &mockSpotify{}
 
-			o := NewOrchestrator(mockSpotify, mockRepo)
+			o := NewOrchestrator(mockSpotify, mockRepo, nil)
 
 			// Execute
 			pl, err := o.CreatePlaylist(context.Background(), tc.inputName)
@@ -322,7 +338,7 @@ func TestOrchestrator_GetPlaylist(t *testing.T) {
 			mockRepo := &mockRepo{getErr: tc.mockGetErr}
 			mockSpotify := &mockSpotify{}
 
-			o := NewOrchestrator(mockSpotify, mockRepo)
+			o := NewOrchestrator(mockSpotify, mockRepo, nil)
 
 			pl, err := o.GetPlaylist(context.Background(), tc.playlistID)
 
@@ -389,7 +405,7 @@ func TestOrchestrator_GetPlaylistAnalysis(t *testing.T) {
 			mockRepo := &mockRepo{audioErr: tc.mockGetErr, features: tc.features}
 			mockSpotify := &mockSpotify{}
 
-			o := NewOrchestrator(mockSpotify, mockRepo)
+			o := NewOrchestrator(mockSpotify, mockRepo, nil)
 
 			features, err := o.GetPlaylistAnalysis(context.Background(), tc.playlistID)
 
@@ -423,4 +439,280 @@ func featuresEqual(a, b domain.AudioFeatures, tol float64) bool {
 
 func floatEquals(a, b, tol float64) bool {
 	return math.Abs(a-b) <= tol
+}
+
+// mockIntentCompiler is a mock implementation of ports.IntentCompiler.
+type mockIntentCompiler struct {
+	intent domain.IntentObject
+	err    error
+	called bool
+}
+
+func (m *mockIntentCompiler) AnalyzeIntent(ctx context.Context, message string) (domain.IntentObject, error) {
+	m.called = true
+	if m.err != nil {
+		return domain.IntentObject{}, m.err
+	}
+	return m.intent, nil
+}
+
+func TestOrchestrator_ProcessIntent(t *testing.T) {
+	tests := []struct {
+		name       string
+		compiler   *mockIntentCompiler
+		message    string
+		wantErr    bool
+		wantCalled bool
+	}{
+		{
+			name: "Success: returns intent",
+			compiler: &mockIntentCompiler{
+				intent: domain.IntentObject{Explanation: "test explanation"},
+			},
+			message:    "Give me some chill vibes",
+			wantErr:    false,
+			wantCalled: true,
+		},
+		{
+			name:       "Error: compiler not configured",
+			compiler:   nil,
+			message:    "test",
+			wantErr:    true,
+			wantCalled: false,
+		},
+		{
+			name: "Error: compiler returns error",
+			compiler: &mockIntentCompiler{
+				err: errors.New("analysis failed"),
+			},
+			message:    "test",
+			wantErr:    true,
+			wantCalled: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo := &mockRepo{}
+			mockSpotify := &mockSpotify{}
+
+			var compiler ports.IntentCompiler
+			if tc.compiler != nil {
+				compiler = tc.compiler
+			}
+
+			o := NewOrchestrator(mockSpotify, mockRepo, compiler)
+
+			result, err := o.ProcessIntent(context.Background(), "test-playlist-id", tc.message)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ProcessIntent() error = %v, wantErr %v", err, tc.wantErr)
+			}
+
+			if tc.compiler != nil && tc.compiler.called != tc.wantCalled {
+				t.Fatalf("expected called=%v, got %v", tc.wantCalled, tc.compiler.called)
+			}
+
+			if !tc.wantErr && tc.compiler != nil && result.Intent.Explanation != tc.compiler.intent.Explanation {
+				t.Fatalf("expected explanation %q, got %q", tc.compiler.intent.Explanation, result.Intent.Explanation)
+			}
+		})
+	}
+}
+
+func TestOrchestrator_HasIntentCompiler(t *testing.T) {
+	t.Run("returns true when compiler is set", func(t *testing.T) {
+		compiler := &mockIntentCompiler{}
+		o := NewOrchestrator(&mockSpotify{}, &mockRepo{}, compiler)
+
+		if !o.HasIntentCompiler() {
+			t.Error("expected HasIntentCompiler to return true")
+		}
+	})
+
+	t.Run("returns false when compiler is nil", func(t *testing.T) {
+		o := NewOrchestrator(&mockSpotify{}, &mockRepo{}, nil)
+
+		if o.HasIntentCompiler() {
+			t.Error("expected HasIntentCompiler to return false")
+		}
+	})
+}
+
+func TestMatchesConstraints(t *testing.T) {
+	tests := []struct {
+		name        string
+		features    domain.AudioFeatures
+		constraints domain.IntentObject
+		want        bool
+	}{
+		{
+			name: "all constraints nil - passes",
+			features: domain.AudioFeatures{
+				Energy:           0.8,
+				Valence:          0.6,
+				Acousticness:     0.3,
+				Instrumentalness: 0.1,
+			},
+			constraints: domain.IntentObject{},
+			want:        true,
+		},
+		{
+			name: "energy within range - passes",
+			features: domain.AudioFeatures{
+				Energy: 0.7,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "energy below range - fails",
+			features: domain.AudioFeatures{
+				Energy: 0.3,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "energy above range - fails",
+			features: domain.AudioFeatures{
+				Energy: 0.95,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "constraint with zero bounds - skipped",
+			features: domain.AudioFeatures{
+				Energy: 0.1, // Would fail if constraint was checked
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0, Max: 0},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "multiple constraints all pass",
+			features: domain.AudioFeatures{
+				Energy:           0.7,
+				Valence:          0.5,
+				Acousticness:     0.2,
+				Instrumentalness: 0.8,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy:     &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+					Valence:    &domain.VibeConstraint{Min: 0.3, Max: 0.7},
+					Acoustic:   &domain.VibeConstraint{Min: 0.0, Max: 0.5},
+					Instrument: &domain.VibeConstraint{Min: 0.6, Max: 1.0},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "multiple constraints one fails",
+			features: domain.AudioFeatures{
+				Energy:           0.7,
+				Valence:          0.1, // Below range
+				Acousticness:     0.2,
+				Instrumentalness: 0.8,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy:     &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+					Valence:    &domain.VibeConstraint{Min: 0.3, Max: 0.7},
+					Acoustic:   &domain.VibeConstraint{Min: 0.0, Max: 0.5},
+					Instrument: &domain.VibeConstraint{Min: 0.6, Max: 1.0},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "value at boundary min - passes",
+			features: domain.AudioFeatures{
+				Energy: 0.5,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "value at boundary max - passes",
+			features: domain.AudioFeatures{
+				Energy: 0.9,
+			},
+			constraints: domain.IntentObject{
+				VibeConstraints: struct {
+					Energy     *domain.VibeConstraint `json:"energy,omitempty"`
+					Valence    *domain.VibeConstraint `json:"valence,omitempty"`
+					Acoustic   *domain.VibeConstraint `json:"acousticness,omitempty"`
+					Instrument *domain.VibeConstraint `json:"instrumentalness,omitempty"`
+				}{
+					Energy: &domain.VibeConstraint{Min: 0.5, Max: 0.9},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := matchesConstraints(tc.features, tc.constraints)
+			if got != tc.want {
+				t.Errorf("matchesConstraints() = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

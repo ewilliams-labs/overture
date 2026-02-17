@@ -280,6 +280,101 @@ func (a *Adapter) Save(ctx context.Context, p domain.Playlist) error {
 	return nil
 }
 
+// AddTracksToPlaylist adds tracks to an existing playlist without replacing existing tracks.
+// Tracks are deduplicated - if a track already exists in the playlist, it won't be added again.
+func (a *Adapter) AddTracksToPlaylist(ctx context.Context, playlistID string, tracks []domain.Track) error {
+	if len(tracks) == 0 {
+		return nil
+	}
+
+	// 1. Verify playlist exists
+	row := a.db.QueryRowContext(ctx, "SELECT id FROM playlists WHERE id = ?", playlistID)
+	var id string
+	if err := row.Scan(&id); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.ErrNotFound
+		}
+		return fmt.Errorf("failed to verify playlist: %w", err)
+	}
+
+	// 2. Start Transaction
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 3. Prepare statements
+	stmtTrack, err := tx.PrepareContext(ctx, `
+		INSERT INTO tracks (
+			id, title, artist, album, duration_ms, isrc, cover_url, preview_url,
+			danceability, energy, valence, tempo, instrumentalness, acousticness
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			title=excluded.title,
+			artist=excluded.artist,
+			album=excluded.album,
+			duration_ms=excluded.duration_ms,
+			isrc=excluded.isrc,
+			cover_url=excluded.cover_url,
+			preview_url=excluded.preview_url,
+			danceability=excluded.danceability,
+			energy=excluded.energy,
+			valence=excluded.valence,
+			tempo=excluded.tempo,
+			instrumentalness=excluded.instrumentalness,
+			acousticness=excluded.acousticness;
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmtTrack.Close()
+
+	stmtLink, err := tx.PrepareContext(ctx, `
+		INSERT INTO playlist_tracks (playlist_id, track_id)
+		VALUES (?, ?)
+		ON CONFLICT(playlist_id, track_id) DO NOTHING
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmtLink.Close()
+
+	// 4. Insert each track
+	for _, t := range tracks {
+		if _, err := stmtTrack.ExecContext(
+			ctx,
+			t.ID,
+			t.Title,
+			t.Artist,
+			t.Album,
+			t.DurationMs,
+			t.ISRC,
+			t.CoverURL,
+			t.PreviewURL,
+			t.Features.Danceability,
+			t.Features.Energy,
+			t.Features.Valence,
+			t.Features.Tempo,
+			t.Features.Instrumentalness,
+			t.Features.Acousticness,
+		); err != nil {
+			return fmt.Errorf("failed to save track %s: %w", t.ID, err)
+		}
+		if _, err := stmtLink.ExecContext(ctx, playlistID, t.ID); err != nil {
+			return fmt.Errorf("failed to link track %s: %w", t.ID, err)
+		}
+	}
+
+	// 5. Commit Transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("transaction commit failed: %w", err)
+	}
+
+	return nil
+}
+
 func (a *Adapter) migrate() error {
 	query := `
 	CREATE TABLE IF NOT EXISTS tracks (

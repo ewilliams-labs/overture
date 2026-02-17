@@ -9,7 +9,7 @@ setup:
     chmod +x scripts/demo_flow.sh
 
 clean:
-    rm -f .last_playlist_id overture.db
+    rm -f .last_playlist_id overture.db overture /tmp/overture*.log
 
 demo-create:
     chmod +x scripts/demo_flow.sh
@@ -21,50 +21,18 @@ demo-add:
 
 demo: demo-create demo-add
 
-stop:
-    @set -euo pipefail; \
-    if command -v lsof >/dev/null 2>&1; then \
-        pid=$(lsof -ti tcp:8080 2>/dev/null || true); \
-    elif command -v fuser >/dev/null 2>&1; then \
-        pid=$(fuser -n tcp 8080 2>/dev/null || true); \
-    else \
-        pid=""; \
-    fi; \
-    if [ -n "$pid" ]; then \
-        kill $pid 2>/dev/null || true; \
-    fi
-
 run: start
 
 tidy:
 	go mod tidy
 
 test:
-	go test ./...
+    go test -v ./...
 
 # Run full integration suite against a running server
 validate:
-    @set -euo pipefail; \
-    just clean >/dev/null 2>&1 || true; \
-    go run cmd/api/main.go > /tmp/overture-validate.log 2>&1 & PID=$!; \
-    trap 'just clean >/dev/null 2>&1 || true; kill "$PID" 2>/dev/null || true; if command -v lsof >/dev/null 2>&1; then pid=$(lsof -ti tcp:8080 2>/dev/null || true); elif command -v fuser >/dev/null 2>&1; then pid=$(fuser -n tcp 8080 2>/dev/null || true); fi; [ -n "$pid" ] && kill $pid 2>/dev/null || true' EXIT; \
-    ready=""; \
-    for _ in $(seq 1 30); do \
-        status=$(curl -s --connect-timeout 1 --max-time 2 -o /dev/null -w "%{http_code}" http://localhost:8080/health || true); \
-        if [ "$status" = "200" ]; then ready="yes"; break; fi; \
-        sleep 0.5; \
-    done; \
-    if [ -z "$ready" ]; then echo "Server did not become ready" >&2; exit 1; fi; \
-    bash ./scripts/validate-acceptance.sh; \
-    chmod +x scripts/demo_flow.sh; \
-    just demo
+    ./scripts/env-setup.sh ./scripts/with-server.sh ./scripts/validate-acceptance.sh
 
 # Complete CI pipeline: build, run, validate, kill
 ci-check:
-    go build -o overture ./cmd/server
-    ./overture & PID=$!; \
-    sleep 3; \
-    make validate-acceptance; \
-    EXIT_CODE=$?; \
-    kill $PID; \
-    exit $EXIT_CODE
+    ./scripts/env-setup.sh ./scripts/with-server.sh ./scripts/validate-api.sh

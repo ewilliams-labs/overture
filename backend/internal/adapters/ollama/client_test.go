@@ -61,8 +61,9 @@ func TestClient_AnalyzeIntent(t *testing.T) {
 			if tt.wantErr {
 				return
 			}
-			if gotRequest.Model != "deepseek-r1:8b" {
-				t.Fatalf("expected model deepseek-r1:8b, got %q", gotRequest.Model)
+			// Model should be either env var or default
+			if gotRequest.Model == "" {
+				t.Fatal("expected model to be set")
 			}
 			if gotRequest.Format != "json" {
 				t.Fatalf("expected format json, got %q", gotRequest.Format)

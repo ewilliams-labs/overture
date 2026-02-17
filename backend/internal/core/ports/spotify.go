@@ -31,4 +31,5 @@ func (e NoConfidentMatchError) Is(target error) bool {
 type SpotifyProvider interface {
 	GetTrackByMetadata(ctx context.Context, title, artist string) (domain.Track, error)
 	GetTrack(ctx context.Context, title, artist string) (domain.Track, error)
+	GetArtistTopTracks(ctx context.Context, artistName string) ([]domain.Track, error)
 }
