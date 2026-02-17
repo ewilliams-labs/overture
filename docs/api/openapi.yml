@@ -116,7 +116,26 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /playlists/{id}/intent:
     post:
-      summary: Analyze playlist intent
+      summary: Analyze playlist intent (SSE)
+      description: |
+        Analyzes user intent using Server-Sent Events (SSE).
+        
+        **Event Types:**
+        - `status`: Progress updates (thinking, heartbeat)
+        - `complete`: Final response with IntentObject
+        - `error`: Error occurred during processing
+        
+        **Example Events:**
+        ```
+        event: status
+        data: {"status": "thinking", "message": "Overture is analyzing the vibe..."}
+        
+        event: status
+        data: {"status": "heartbeat"}
+        
+        event: complete
+        data: {"status": "complete", "data": {...IntentObject...}}
+        ```
       parameters:
         - name: id
           in: path
@@ -131,11 +150,23 @@ paths:
               $ref: "#/components/schemas/AnalyzeIntentRequest"
       responses:
         "200":
-          description: Intent object
+          description: SSE stream with intent analysis events
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEEvent"
+        "400":
+          description: Bad request (missing message or invalid JSON)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IntentObject"
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Unsupported Media Type (must be application/json)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "501":
           description: Intent compiler not configured
           content:
@@ -274,3 +305,29 @@ components:
           $ref: "#/components/schemas/IntentSequence"
         explanation:
           type: string
+    SSEEvent:
+      type: object
+      description: Server-Sent Event payload
+      properties:
+        status:
+          type: string
+          enum: [thinking, heartbeat, complete, error]
+          description: Event status type
+        message:
+          type: string
+          description: Optional message (for thinking/heartbeat events)
+        data:
+          $ref: "#/components/schemas/IntentObject"
+          description: Intent object (only present in complete events)
+        tracks_evaluated:
+          type: integer
+          description: Total tracks evaluated before filtering (only in complete events)
+        tracks_added:
+          type: integer
+          description: Number of tracks added to playlist after filtering (only in complete events)
+        summary:
+          type: string
+          description: Human-readable summary of playlist population (only in complete events)
+        error:
+          type: string
+          description: Error message (only present in error events)
