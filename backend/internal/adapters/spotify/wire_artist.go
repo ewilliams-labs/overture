@@ -72,7 +72,7 @@ func (c *Client) searchArtist(ctx context.Context, artistName string) (string, e
 	query.Set("market", "US")
 	searchURL.RawQuery = query.Encode()
 
-	log.Printf("DEBUG spotify adapter: artist search URL: %s", searchURL.String())
+	log.Printf("DEBUG spotify adapter: artist search URL: %s", searchURL.String()) // #nosec G706 -- URL is internally constructed from trusted baseURL constant
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL.String(), nil)
 	if err != nil {

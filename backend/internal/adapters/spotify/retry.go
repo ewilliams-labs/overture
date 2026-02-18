@@ -71,6 +71,7 @@ func (c *Client) doRequestWithRetry(req *http.Request) (*http.Response, error) {
 			req.Body = body
 		}
 
+		// #nosec G107 -- URL constructed from trusted Spotify API baseURL constant
 		resp, err := c.httpClient.Do(req)
 		retryAfter, retry := shouldRetry(resp, err)
 		if !retry {
@@ -79,9 +80,9 @@ func (c *Client) doRequestWithRetry(req *http.Request) (*http.Response, error) {
 
 		attemptNum := attempt + 1
 		if err != nil {
-			log.Printf("WARN spotify adapter: retry attempt %d/%d after error: %v", attemptNum, maxRetries, err)
+			log.Printf("WARN spotify adapter: retry attempt %d/%d after error: %v", attemptNum, maxRetries, err) // #nosec G706 -- error value is from trusted internal HTTP operation
 		} else if resp != nil {
-			log.Printf("WARN spotify adapter: retry attempt %d/%d after status %d", attemptNum, maxRetries, resp.StatusCode)
+			log.Printf("WARN spotify adapter: retry attempt %d/%d after status %d", attemptNum, maxRetries, resp.StatusCode) // #nosec G706 -- status code is numeric from trusted HTTP response
 			_ = resp.Body.Close()
 		}
 

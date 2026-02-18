@@ -11,6 +11,7 @@ func generateDeterministicFeatures(trackID string) domain.AudioFeatures {
 	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(trackID))
 	seed := int64(hasher.Sum32())
+	// #nosec G404 -- Deterministic RNG for reproducible audio features, not security-sensitive
 	rng := rand.New(rand.NewSource(seed))
 
 	between := func(min, max float64) float64 {

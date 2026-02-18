@@ -5,12 +5,16 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/hajimehoshi/go-mp3"
 )
 
+var previewClient = &http.Client{Timeout: 15 * time.Second}
+
 func analyzePreview(url string) (float64, error) {
-	resp, err := http.Get(url)
+	// #nosec G107 -- URL is a validated Spotify preview URL from trusted API response
+	resp, err := previewClient.Get(url)
 	if err != nil {
 		return 0, fmt.Errorf("preview fetch failed: %w", err)
 	}

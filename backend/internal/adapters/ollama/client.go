@@ -83,6 +83,7 @@ func (c *Client) AnalyzeIntent(ctx context.Context, message string) (domain.Inte
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	// #nosec G107 -- URL constructed from trusted OLLAMA_HOST config
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return domain.IntentObject{}, fmt.Errorf("ollama: request failed: %w", err)

@@ -87,7 +87,7 @@ func readyHandler(w http.ResponseWriter, r *http.Request, backendURL string) {
 		fmt.Fprintf(w, `{"status":"not_ready","error":"%s"}`, err.Error())
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -113,7 +113,7 @@ func waitForBackend(backendURL string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(backendURL + "/health")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}

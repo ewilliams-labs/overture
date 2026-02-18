@@ -27,7 +27,7 @@ func NewClient(clientID, clientSecret string) *Client {
 	config := &clientcredentials.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		TokenURL:     "https://accounts.spotify.com/api/token", // Real Spotify Auth URL
+		TokenURL:     "https://accounts.spotify.com/api/token", // #nosec G101 -- Public Spotify OAuth endpoint, not a secret
 	}
 
 	httpClient := config.Client(context.Background())
