@@ -3,7 +3,7 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM golang:1.24.0-alpine3.21 AS builder
+FROM golang:1.25.6-alpine3.21 AS builder
 
 # Install build dependencies (CGO for sqlite3)
 RUN apk add --no-cache gcc musl-dev
