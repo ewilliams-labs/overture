@@ -118,14 +118,21 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.29.0
         with:
-          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1'
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      - name: Debug: Print SARIF file contents
+        if: always()
+        run: |
+          echo '--- trivy-results.sarif ---'
+          cat trivy-results.sarif || echo 'SARIF file not found or empty.'
+          echo '-------------------------'
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3.28.10
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: trivy-results.sarif
