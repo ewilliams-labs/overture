@@ -584,7 +584,8 @@ func TestHandler_AsyncAudioAnalysis(t *testing.T) {
 	}
 	defer func() { worker.AnalyzePreviewFunc = origAnalyze }()
 
-	repo, err := sqlite.NewAdapter(":memory:")
+	// Use shared cache mode so worker goroutines see the same in-memory database
+	repo, err := sqlite.NewAdapter("file::memory:?cache=shared")
 	if err != nil {
 		t.Fatalf("new adapter: %v", err)
 	}
