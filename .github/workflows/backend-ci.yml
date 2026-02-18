@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+  workflow_dispatch: {}
 
 env:
   REGISTRY: ghcr.io
@@ -105,4 +106,3 @@ jobs:
         if: always() # This fixes your "Configuration Error"
         with:
           sarif_file: 'trivy-results.sarif'
-          
