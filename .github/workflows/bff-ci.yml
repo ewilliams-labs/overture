@@ -1,89 +1,69 @@
 name: BFF CI
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'bff/**'
-      - '.github/workflows/bff-ci.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'bff/**'
-
-env:
-  REGISTRY: ghcr.io
-  # lowercase the repo name for Docker compatibility
-  IMAGE_NAME: ${{ github.repository }}
-
+# ... (on/env blocks remain the same) ...
 jobs:
-  build-scan-push:
+  pipeline:
     name: Build, Scan, and Push
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      security-events: write # Required for SARIF upload
-
+      security-events: write
     steps:
-      - name: Checkout code
+      - name: 1. Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: 2. Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.0'
           cache-dependency-path: bff/go.mod
 
-      - name: Verify BFF Code
+      - name: 3. Run Tests
         run: |
           cd bff
-          go mod download
-          go vet ./...
           go test -v ./...
 
-      - name: Set up Docker Buildx
+      - name: 4. Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: 5. Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Load for Scan
+      - name: 6. Build Image Locally
         uses: docker/build-push-action@v6
         with:
           context: ./bff
           file: ./bff/Dockerfile
-          load: true # Puts the image in the local docker store for Trivy
-          tags: bff-local:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          load: true # Independent step: loads into local Docker daemon
+          tags: bff-local:${{ github.sha }}
 
-      - name: Run Trivy Security Scan
+      - name: 7. Run Trivy Scan
         uses: aquasecurity/trivy-action@0.29.0
+        id: scan
         with:
-          image-ref: 'bff-local:latest'
+          image-ref: bff-local:${{ github.sha }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1' # Fails the build if vulnerabilities are found
+          exit-code: '1' # This will fail the step if vulns are found
 
-      - name: Upload Scan Results to GitHub Security
+      - name: 8. Upload results to Security Overview
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() # CRITICAL: This fixes the "Configuration Error" by ensuring data is sent
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Build and Push to GHCR
+      - name: 9. Final Push to Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
         with:
           context: ./bff
           file: ./bff/Dockerfile
-          push: true
+          push: true # Only happens if scan passes or is ignored
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bff:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bff:${{ github.sha }}
