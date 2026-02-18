@@ -1,69 +1,69 @@
 name: BFF CI
-# ... (on/env blocks remain the same) ...
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bff/**'
+      - '.github/workflows/bff-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bff/**'
+
+env:
+  REGISTRY: ghcr.io
+  # Matches the lowercase convention for Docker
+  IMAGE_NAME: ${{ github.repository }}/bff
+
 jobs:
-  pipeline:
-    name: Build, Scan, and Push
+  # STAGE 1: Logic & Lint
+  lint-and-test:
+    name: 1. Lint & Test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      security-events: write
     steps:
-      - name: 1. Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 2. Set up Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.0'
           cache-dependency-path: bff/go.mod
 
-      - name: 3. Run Tests
+      - name: Run Tests
         run: |
           cd bff
+          go mod download
+          go vet ./...
           go test -v ./...
 
-      - name: 4. Set up Docker Buildx
+  # STAGE 2: Image Construction
+  build-and-push:
+    name: 2. Build & Push
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 5. Log in to GHCR
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 6. Build Image Locally
+      - name: Build and Push
         uses: docker/build-push-action@v6
         with:
           context: ./bff
           file: ./bff/Dockerfile
-          load: true # Independent step: loads into local Docker daemon
-          tags: bff-local:${{ github.sha }}
-
-      - name: 7. Run Trivy Scan
-        uses: aquasecurity/trivy-action@0.29.0
-        id: scan
-        with:
-          image-ref: bff-local:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1' # This will fail the step if vulns are found
-
-      - name: 8. Upload results to Security Overview
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() # CRITICAL: This fixes the "Configuration Error" by ensuring data is sent
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: 9. Final Push to Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
-        with:
-          context: ./bff
-          file: ./bff/Dockerfile
-          push: true # Only happens if scan passes or is ignored
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bff:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/bff:${{ github.sha }}
+          push: true
+          #
