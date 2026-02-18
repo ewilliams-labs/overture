@@ -147,6 +147,8 @@ The intent endpoint sends periodic heartbeat events (`event: status`) to keep co
 - **Hexagonal / Ports & Adapters** — Domain logic isolated from infrastructure
 - **Repository Factory** — SQLite (dev) / Postgres (prod) via `STORAGE_DRIVER`
 - **Worker Pool** — Background audio analysis with job queue
+- **BFF Layer** (Planned) — React-optimized API gateway with OAuth session management
+- **Container-First** (Planned) — OCI images with GPU passthrough support
 
 ---
 
@@ -174,6 +176,74 @@ The intent endpoint sends periodic heartbeat events (`event: status`) to keep co
 - [x] Automatic GPU detection (WSL2 → Windows host)
 - [x] Vibe constraint matching and track filtering
 - [x] Artist top tracks integration
+
+### [ ] Phase 4: Backend-for-Frontend (BFF) Layer
+
+The transition to a **BFF architecture** decouples the React frontend from direct backend dependencies, enabling:
+
+- **Multi-Provider Aggregation** — Unified interface for Spotify, YouTube Music, and future providers
+- **OAuth Session Management** — Centralized token lifecycle for Spotify, Google, and Facebook identity providers
+- **SSE Stream Shaping** — Format AI reasoning streams specifically for Generative UI consumption
+- **User-Specific Data Projection** — Transform domain entities into frontend-optimized DTOs
+
+The BFF simplifies the frontend by owning cross-service orchestration and user context hydration.
+
+**Planned OAuth2 Providers:**
+
+| Provider | Scope | Status |
+| -------- | ----- | ------ |
+| Spotify | Playlist read/write, playback | Planned |
+| Google | YouTube Music integration | Planned |
+| Facebook | Social sharing, friend sync | Planned |
+
+**Database Evolution:** Transition from local SQLite to a user-owned schema with playlist ownership, enabling multi-device sync and collaborative playlists.
+
+### [ ] Phase 5: Containerization & GPU Portability
+
+OCI container strategy for reproducible deployments across development, CI/CD, and production:
+
+- **Docker Compose** — Multi-service orchestration (backend, BFF, frontend, Postgres)
+- **Environment Flag Passthrough** — Containers honor `RUN_AI_TESTS` and `OLLAMA_HOST` for GPU detection
+- **Host Gateway Bridge** — Use `host.docker.internal` to reach Windows host GPU (RX 7900 XT) from WSL2 containers
+
+```yaml
+# docker-compose.yml excerpt
+services:
+  backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - RUN_AI_TESTS=${RUN_AI_TESTS:-false}
+```
+
+### [ ] Phase 6: The Experience Layer
+
+Chat-first interface with mood-adaptive components:
+
+- **Generative UI** — React components that dynamically adapt based on AI-detected musical mood (color palette, animation intensity, layout density)
+- **Voice-to-Intent** — Web Speech API integration for hands-free playlist curation
+- **Ambient Mode** — Visualizer that responds to real-time audio analysis
+
+---
+
+## Security & Quality Roadmap
+
+### CI/CD Pipeline (GitHub Actions)
+
+| Stage | Tool | Purpose |
+| ----- | ---- | ------- |
+| Build | Go 1.22+ / Node 20 | Parallel builds for `/backend`, `/bff`, `/frontend` |
+| Lint | `golangci-lint`, `eslint` | Code quality enforcement |
+| Security | `gosec` | Static analysis for Go security vulnerabilities |
+| Scan | `trivy` | Container image vulnerability scanning |
+| Test | `go test`, `vitest` | Unit and integration test suites |
+
+### Security Practices
+
+- **Secret Management** — Environment variables via `.env` (local) / GitHub Secrets (CI)
+- **Dependency Auditing** — Automated `go mod tidy` and `npm audit` in pipelines
+- **Image Hardening** — Distroless base images for production containers
 
 ---
 
