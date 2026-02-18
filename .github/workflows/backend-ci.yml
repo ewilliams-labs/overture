@@ -75,8 +75,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   # STAGE 3: Security Validation
+  # STAGE 3: Security Validation
   security-scan:
-    name: 3. Security Scan
+    name: 3. Container Security Scan
     needs: build-and-push
     runs-on: ubuntu-latest
     permissions:
@@ -87,22 +88,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pre-pull image for scan
+        run: |
+          for i in {1..5}; do
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} && break || sleep 10
+          done
+
       - name: Run Trivy Scan
         uses: aquasecurity/trivy-action@0.29.0
         with:
-          # We pull the EXACT image we just pushed in Job 2
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-        env:
-          # Required to pull from private GHCR in a separate job
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload to Security Overview
         uses: github/codeql-action/upload-sarif@v3
-        if: always() # This fixes your "Configuration Error"
+        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
