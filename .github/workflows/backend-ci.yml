@@ -116,3 +116,23 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+
+# 1. Human-Readable Output (Table format)
+      - name: Preview Vulnerabilities in Logs
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'table' # Show us the table!
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0' # Don't fail here; let the SARIF step handle the failure
+
+      # 2. Machine-Readable Output (SARIF format)
+      - name: Run Trivy Scan for Security Overview
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1' # This step kills the build if it finds issues
+          github-pat: ${{ secrets.GITHUB_TOKEN }}

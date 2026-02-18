@@ -3,7 +3,9 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM golang:1.24-alpine AS builder
+# 1. Update the Builder to the specific Go 1.24 on Alpine 3.21
+FROM golang:1.24.0-alpine3.21 AS builder
+
 
 WORKDIR /app
 
@@ -23,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM alpine:3.19.1
+FROM alpine:3.21.3
 
 # Install runtime dependencies
 RUN apk add --no-cache \
