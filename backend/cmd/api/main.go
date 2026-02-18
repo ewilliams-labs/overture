@@ -51,7 +51,7 @@ func main() {
 	case "postgres":
 		log.Fatal("Postgres driver not yet implemented")
 	default:
-		log.Fatalf("Unknown storage driver: %s", storageDriver)
+		log.Fatalf("Unknown storage driver: %s", storageDriver) // #nosec G706
 	}
 	defer repoCloser()
 

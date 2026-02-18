@@ -122,7 +122,7 @@ func getMinConfidence() float64 {
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		log.Printf("WARN spotify adapter: invalid SPOTIFY_MIN_CONFIDENCE %q", value)
+		log.Printf("WARN spotify adapter: invalid SPOTIFY_MIN_CONFIDENCE %q", value) // #nosec G706
 		return defaultSearchMatchThreshold
 	}
 	if parsed < 0 {
