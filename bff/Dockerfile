@@ -3,7 +3,7 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24.0-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM alpine:3.19
+FROM alpine:3.21.3
 
 # Install runtime dependencies
 RUN apk add --no-cache \
