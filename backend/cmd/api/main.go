@@ -82,7 +82,7 @@ func main() {
 	srv := &http.Server{
 		Addr:              ":8080",
 		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: 15 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)
