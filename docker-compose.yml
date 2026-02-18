@@ -1,0 +1,110 @@
+# Overture Docker Compose Configuration
+# =====================================
+# Orchestrates backend and BFF services with GPU passthrough support for Windows/WSL2.
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose logs -f        # Follow logs
+#   docker compose down -v        # Stop and remove volumes
+#
+# GPU Access (WSL2):
+#   The backend uses host.docker.internal to reach Ollama on the Windows host.
+#   Ensure Ollama is running on Windows before starting the containers.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: overture-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Spotify credentials (required)
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      
+      # Ollama configuration (for GPU access via Windows host)
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+      
+      # AI test toggle (set to 'true' to enable intent tests)
+      - RUN_AI_TESTS=${RUN_AI_TESTS:-false}
+      
+      # Storage configuration
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-sqlite}
+    
+    # Bridge to Windows host for GPU access
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    
+    volumes:
+      # Persist SQLite database
+      - backend-data:/app/data
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - overture-net
+
+  # BFF (Backend-for-Frontend) API Gateway
+  bff:
+    build:
+      context: ./bff
+      dockerfile: Dockerfile
+    container_name: overture-bff
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Backend URL (uses Docker network DNS)
+      - BACKEND_URL=http://backend:8080
+      - PORT=3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - overture-net
+
+  # Postgres (for production-like environments)
+  postgres:
+    image: postgres:16-alpine
+    container_name: overture-postgres
+    restart: unless-stopped
+    profiles:
+      - production
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-overture}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-overture}
+      - POSTGRES_DB=${POSTGRES_DB:-overture}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-overture}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - overture-net
+
+volumes:
+  backend-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  overture-net:
+    driver: bridge

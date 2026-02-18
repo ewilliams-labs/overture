@@ -1,0 +1,39 @@
+# Dependencies
+vendor/
+
+# Build artifacts
+overture
+*.exe
+
+# Database files
+*.db
+*.sqlite
+
+# Test files
+*_test.go
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Scripts (not needed in container)
+scripts/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/

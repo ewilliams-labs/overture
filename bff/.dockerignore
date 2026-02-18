@@ -1,0 +1,30 @@
+# Dependencies
+vendor/
+
+# Build artifacts
+bff
+*.exe
+
+# Test files
+*_test.go
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
