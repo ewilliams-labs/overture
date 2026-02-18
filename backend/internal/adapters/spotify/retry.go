@@ -71,8 +71,7 @@ func (c *Client) doRequestWithRetry(req *http.Request) (*http.Response, error) {
 			req.Body = body
 		}
 
-		// #nosec G107 -- URL constructed from trusted Spotify API baseURL constant
-		resp, err := c.httpClient.Do(req) // #nosec G704
+		resp, err := c.httpClient.Do(req) // #nosec G107,G704
 		retryAfter, retry := shouldRetry(resp, err)
 		if !retry {
 			return resp, err
