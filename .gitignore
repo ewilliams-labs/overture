@@ -1,6 +1,8 @@
 # Binaries & OS
 bin/
 backend/backend
+backend/api
+bff/bff
 .DS_Store
 .env
 *.log
