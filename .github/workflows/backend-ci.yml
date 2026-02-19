@@ -74,9 +74,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # STAGE 3: Security Validation
-  # STAGE 3: Security Validation
-  security-scan:
+security-scan:
     name: 3. Container Security Scan
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -101,32 +99,19 @@ jobs:
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} && break || sleep 10
           done
 
-      - name: Run Trivy Scan
-        uses: aquasecurity/trivy-action@0.29.0
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1'
-          github-pat: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload to Security Overview
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-# 1. Human-Readable Output (Table format)
+      # STEP A: THE HUMAN VIEW (Prints the table you want to see)
       - name: Preview Vulnerabilities in Logs
         uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'table' # Show us the table!
+          format: 'table'
           severity: 'HIGH,CRITICAL'
-          exit-code: '0' # Don't fail here; let the SARIF step handle the failure
+          exit-code: '0' # Don't fail the build here!
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Machine-Readable Output (SARIF format)
+      # STEP B: THE MACHINE VIEW (Sends data to GitHub Dashboard)
       - name: Run Trivy Scan for Security Overview
         uses: aquasecurity/trivy-action@0.29.0
         with:
@@ -134,5 +119,11 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1' # This step kills the build if it finds issues
+          exit-code: '1' # This is the gatekeeper
           github-pat: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload results to Security Overview
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
