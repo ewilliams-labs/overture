@@ -14,11 +14,11 @@ RUN GOTOOLCHAIN=auto go mod download
 
 COPY . .
 
-# Build BFF binary
+# Build BFF binary (Targeting the root directory where main.go lives)
 RUN GOTOOLCHAIN=auto CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-w -s" \
     -o /app/overture-bff \
-    ./cmd/api
+    .
 
 
 # --- RUNTIME STAGE ---
