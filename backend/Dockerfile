@@ -1,5 +1,5 @@
 # 1. Use the patched Go version (matches fixed version in logs)
-FROM golang:1.24.13-alpine3.21 AS builder
+FROM golang:1.24-alpine3.21 AS builder
 
 # 2. Install build dependencies AND upgrade existing packages to fix OpenSSL
 RUN apk add --no-cache gcc musl-dev && apk upgrade --no-cache
@@ -18,8 +18,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 FROM alpine:3.21.3
 
 
-RUN apk add --no-cache ca-certificates sqlite-libs tzdata && \
-    apk upgrade --no-cache
+RUN apk add --no-cache gcc musl-dev && apk upgrade --no-cache
 
 WORKDIR /app
 
