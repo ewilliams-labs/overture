@@ -1,6 +1,8 @@
 # 1. Use the patched Go version (matches fixed version in logs)
 FROM golang:1.25-alpine3.21 AS builder
 
+RUN GOTOOLCHAIN=auto go mod download
+
 # 2. Install build dependencies AND upgrade existing packages to fix OpenSSL
 RUN apk update && apk upgrade --no-cache && apk add --no-cache gcc musl-dev
 

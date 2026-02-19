@@ -17,3 +17,5 @@ dist/
 
 # Go
 vendor/
+go1.25.7.linux-amd64.tar.gz
+.gitignore
