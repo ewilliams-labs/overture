@@ -29,8 +29,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24' # This will pull the latest 1.24.x on the runner
-          cache-dependency-path: bff/go.mod
+          go-version: '1.25'
+          cache-dependency-path: bff/go.sum
 
       - name: Run Tests
         run: |
