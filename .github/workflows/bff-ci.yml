@@ -100,7 +100,7 @@ jobs:
 
       # STEP A: THE HUMAN VIEW (Prints the table you want to see)
       - name: Preview Vulnerabilities in Logs
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'table'
@@ -112,7 +112,7 @@ jobs:
 
       # STEP B: THE MACHINE VIEW (Sends data to GitHub Dashboard)
       - name: Run Trivy Scan for Security Overview
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'sarif'
