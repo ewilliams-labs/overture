@@ -74,7 +74,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-security-scan:
+  # STAGE 3: Security Validation
+  security-scan:
     name: 3. Container Security Scan
     needs: build-and-push
     runs-on: ubuntu-latest
