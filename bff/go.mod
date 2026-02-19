@@ -1,3 +1,3 @@
 module github.com/ewilliams-labs/overture/bff
 
-go 1.25
+go 1.25.7

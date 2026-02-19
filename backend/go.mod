@@ -1,6 +1,6 @@
 module github.com/ewilliams-labs/overture/backend
 
-go 1.25
+go 1.25.7
 
 require (
 	github.com/google/uuid v1.6.0
