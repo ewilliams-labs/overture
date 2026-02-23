@@ -22,7 +22,7 @@ RUN GOTOOLCHAIN=auto CGO_ENABLED=1 GOOS=linux go build \
 
 
 # --- RUNTIME STAGE ---
-FROM alpine:3.21.3
+FROM alpine:3.23.3
 
 # Install RUNTIME dependencies and patch OS for vulnerabilities
 RUN apk update && apk upgrade --no-cache && apk add --no-cache ca-certificates sqlite-libs tzdata
